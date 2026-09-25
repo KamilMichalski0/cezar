@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 /// Exit status the sidecar uses to say "relaunch me" after a self-update (EX_TEMPFAIL).
@@ -47,6 +47,9 @@ struct Shell {
     restart_requested: AtomicBool,
     updating: AtomicBool,
     open_item: Mutex<Option<MenuItem<tauri::Wry>>>,
+    /// "Versions" submenu — one check item per managed install, rebuilt whenever the set or the
+    /// active one changes. Switching is the recovery path from ANY version, however old.
+    versions_menu: Mutex<Option<Submenu<tauri::Wry>>>,
     /// Set on every move/resize; a background writer persists the geometry shortly after.
     geometry_dirty: AtomicBool,
 }
@@ -60,6 +63,31 @@ const INIT_SCRIPT: &str = r#"
     var platform = "__PLATFORM__";
     window.__CEZ_DESKTOP__ = { platform: platform };
     document.documentElement.dataset.cezDesktop = platform;
+    if (platform !== "macos" || location.protocol !== "http:") return;
+    // A cockpit that knows about the shell paints its own transparent title strip
+    // (`data-slot="desktop-titlebar"`). One that predates it does not, and the traffic lights
+    // would land on its brand row — so once the page has rendered, give it the strip and the
+    // 28px inset ourselves, in ITS colours, read off its own sidebar.
+    var attempts = 0;
+    var timer = setInterval(function () {
+      attempts += 1;
+      if (document.querySelector('[data-slot="desktop-titlebar"]')) { clearInterval(timer); return; }
+      var shell = document.querySelector('[data-slot="app-shell"]');
+      if (!shell) { if (attempts > 40) clearInterval(timer); return; }
+      clearInterval(timer);
+      var sidebar = document.querySelector('[data-slot="sidebar"]') || shell;
+      var cs = getComputedStyle(sidebar);
+      var strip = document.createElement('div');
+      strip.setAttribute('data-tauri-drag-region', '');
+      strip.setAttribute('data-cez-legacy-titlebar', '');
+      strip.style.cssText = 'position:fixed;top:0;left:0;right:0;height:28px;z-index:2147483000;' +
+        'background:' + cs.backgroundColor + ';border-bottom:1px solid ' + (cs.borderRightColor || 'transparent') + ';' +
+        '-webkit-user-select:none;user-select:none;';
+      document.body.appendChild(strip);
+      var style = document.createElement('style');
+      style.textContent = '[data-slot="app-shell"]{height:calc(100dvh - 28px)!important;margin-top:28px!important}';
+      document.head.appendChild(style);
+    }, 100);
   })();
 "#;
 
@@ -119,6 +147,9 @@ fn build_menu(app: &AppHandle, shell: &Shell) -> tauri::Result<()> {
     let update_item = MenuItem::with_id(app, "update-cezar", "Update cezar to latest…", true, None::<&str>)?;
     let open_item = MenuItem::with_id(app, "open-browser", "Open view in browser", true, Some("CmdOrCtrl+Shift+O"))?;
     *shell.open_item.lock().unwrap() = Some(open_item.clone());
+    let versions_menu = Submenu::with_id(app, "versions", "Versions", true)?;
+    *shell.versions_menu.lock().unwrap() = Some(versions_menu.clone());
+    refresh_versions_menu(app, shell);
     let app_menu = Submenu::with_items(
         app,
         "cezar",
@@ -127,6 +158,7 @@ fn build_menu(app: &AppHandle, shell: &Shell) -> tauri::Result<()> {
             &PredefinedMenuItem::about(app, None, None)?,
             &PredefinedMenuItem::separator(app)?,
             &update_item,
+            &versions_menu,
             &open_item,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::hide(app, None)?,
@@ -165,6 +197,92 @@ fn build_menu(app: &AppHandle, shell: &Shell) -> tauri::Result<()> {
     Ok(())
 }
 
+/// One installed managed version, as the Versions submenu lists it.
+struct InstalledVersion {
+    id: String,
+    label: String,
+    active: bool,
+}
+
+/// Every complete install under `~/.cezar/versions` (a manifest AND an entry file), newest
+/// install first — the same rule as cezar's own `listInstalled`.
+fn installed_versions() -> Vec<InstalledVersion> {
+    let dir = cezar_home().join("versions");
+    let active = std::fs::read_link(dir.join("current"))
+        .ok()
+        .and_then(|target| target.file_name().map(|name| name.to_string_lossy().into_owned()));
+    let mut rows: Vec<(String, InstalledVersion)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let id = entry.file_name().to_string_lossy().into_owned();
+            if id == "current" || id.starts_with('.') {
+                continue;
+            }
+            let manifest = std::fs::read_to_string(entry.path().join(".cezar-install.json"))
+                .ok()
+                .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
+            let Some(manifest) = manifest else { continue };
+            if !entry.path().join("node_modules").join("@open-mercato").join("cezar").join("dist").join("index.js").is_file() {
+                continue;
+            }
+            let version = manifest.get("version").and_then(|v| v.as_str()).unwrap_or(&id).to_string();
+            let source = manifest.get("source").and_then(|v| v.as_str()).unwrap_or("registry");
+            let installed_at = manifest.get("installedAt").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let label = if source == "local" { format!("{version} (local build)") } else { version };
+            rows.push((installed_at, InstalledVersion { active: active.as_deref() == Some(id.as_str()), id, label }));
+        }
+    }
+    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    rows.into_iter().map(|(_, row)| row).collect()
+}
+
+/// Rebuild the Versions submenu from disk: a check item per install, the active one checked.
+fn refresh_versions_menu(app: &AppHandle, shell: &Shell) {
+    let guard = shell.versions_menu.lock().unwrap();
+    let Some(menu) = guard.as_ref() else { return };
+    if let Ok(items) = menu.items() {
+        for item in items {
+            let _ = menu.remove(&item);
+        }
+    }
+    let versions = installed_versions();
+    if versions.is_empty() {
+        if let Ok(item) = MenuItem::with_id(app, "versions-none", "No versions installed", false, None::<&str>) {
+            let _ = menu.append(&item);
+        }
+        return;
+    }
+    for version in versions {
+        if let Ok(item) = CheckMenuItem::with_id(app, format!("use-version:{}", version.id), &version.label, !version.active, version.active, None::<&str>) {
+            let _ = menu.append(&item);
+        }
+    }
+}
+
+/// Point `current` at an installed id (atomic rename over the old link) and relaunch.
+fn switch_version(shell: &Shell, id: &str) -> bool {
+    let dir = cezar_home().join("versions");
+    if !dir.join(id).join("node_modules").join("@open-mercato").join("cezar").join("dist").join("index.js").is_file() {
+        return false;
+    }
+    let tmp = dir.join(format!(".current.{}.tmp", std::process::id()));
+    let _ = std::fs::remove_file(&tmp);
+    #[cfg(unix)]
+    let linked = std::os::unix::fs::symlink(id, &tmp).is_ok();
+    #[cfg(windows)]
+    let linked = std::os::windows::fs::symlink_dir(id, &tmp).is_ok() || std::fs::write(&tmp, id).is_ok();
+    if !linked || std::fs::rename(&tmp, dir.join("current")).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return false;
+    }
+    let mut guard = shell.child.lock().unwrap();
+    if let Some(child) = guard.as_mut() {
+        shell.restart_requested.store(true, Ordering::SeqCst);
+        let _ = child.kill();
+    }
+    true
+}
+
 pub fn run() {
     let shell = Arc::new(Shell {
         child: Mutex::new(None),
@@ -172,6 +290,7 @@ pub fn run() {
         restart_requested: AtomicBool::new(false),
         updating: AtomicBool::new(false),
         open_item: Mutex::new(None),
+        versions_menu: Mutex::new(None),
         geometry_dirty: AtomicBool::new(false),
     });
     let shell_for_setup = shell.clone();
@@ -217,6 +336,19 @@ pub fn run() {
             Ok(())
         })
         .on_menu_event(move |app, event| match event.id().as_ref() {
+            id if id.starts_with("use-version:") => {
+                let target = id["use-version:".len()..].to_string();
+                let app = app.clone();
+                let shell = shell_for_menu.clone();
+                std::thread::spawn(move || {
+                    if let Some(window) = app.get_webview_window("main") {
+                        splash_reset(&window, "Switching cezar…", &format!("Activating {target}."));
+                    }
+                    if !switch_version(&shell, &target) {
+                        refresh_versions_menu(&app, &shell);
+                    }
+                });
+            }
             "update-cezar" => {
                 let app = app.clone();
                 let shell = shell_for_menu.clone();
@@ -336,6 +468,7 @@ fn supervise(app: AppHandle, shell: Arc<Shell>) {
             let _ = item.set_enabled(true);
         }
         let cwd = pick_cwd();
+        refresh_versions_menu(&app, &shell);
         splash_reset(&window, "Starting cezar…", &entry.to_string_lossy());
 
         let log: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
@@ -768,7 +901,17 @@ fn probe_ipc(window: &WebviewWindow) {
         std::thread::sleep(Duration::from_millis(1500));
         let via_drag_script = window.is_maximized().unwrap_or(false);
         let _ = window.unmaximize();
-        eprintln!("[probe] direct invoke maximized: {direct}; drag-region double-click maximized: {via_drag_script}");
+        std::thread::sleep(Duration::from_millis(500));
+        // Legacy strip present? Signal it the same way (a maximize) — the only channel we have.
+        let _ = window.eval("document.querySelector('[data-cez-legacy-titlebar]') && window.__TAURI_INTERNALS__.invoke('plugin:window|internal_toggle_maximize')");
+        std::thread::sleep(Duration::from_millis(1500));
+        let legacy_strip = window.is_maximized().unwrap_or(false);
+        let _ = window.unmaximize();
+        let own_strip_probe = window.eval("document.querySelector('[data-slot=desktop-titlebar]') && window.__TAURI_INTERNALS__.invoke('plugin:window|internal_toggle_maximize')");
+        std::thread::sleep(Duration::from_millis(1500));
+        let own_strip = own_strip_probe.is_ok() && window.is_maximized().unwrap_or(false);
+        let _ = window.unmaximize();
+        eprintln!("[probe] direct invoke maximized: {direct}; drag-region double-click maximized: {via_drag_script}; legacy strip injected: {legacy_strip}; cockpit's own strip: {own_strip}");
     });
 }
 

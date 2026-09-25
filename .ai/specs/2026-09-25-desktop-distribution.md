@@ -102,6 +102,15 @@ of them is the one case where the shell must ship BEFORE the cezar version that 
 - **App menu → "Update cezar to latest…"**: the same install, then a relaunch. This is what
   makes a downgrade into a version that predates the cockpit's updater recoverable from the
   GUI — the shell never depends on the sidecar being able to update itself.
+- **App menu → Versions**: one check item per install under `~/.cezar/versions`, the active
+  one checked; picking another flips `current` and relaunches. With "Update to latest" this is
+  the complete recovery set: any installed version, including a local build, is one click away
+  from any other, whatever the running cockpit knows.
+- **Legacy title strip**: a cockpit that predates the desktop-aware shell paints no strip and the
+  traffic lights would sit on its brand row. The shell's init script waits for the app to
+  render, and when no `data-slot="desktop-titlebar"` appears it injects a draggable 28px strip
+  in the cockpit's own sidebar colours and insets the app shell — so every version looks right
+  under the shell, not only the ones that know about it.
 - **Port**: 4321 first (so `http://localhost:4321` works in a browser beside the app), the
   next few when busy, then any free port; the actual URL is on the app menu's
   "Open … in browser" item.
