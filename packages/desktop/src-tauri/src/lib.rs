@@ -149,6 +149,17 @@ pub fn run() {
     let shell_for_setup = shell.clone();
     let shell_for_menu = shell.clone();
     let shell_for_run = shell.clone();
+    // SIGTERM/SIGINT (a `kill`, a logout, a supervisor of our own) never reach Tauri's Exit
+    // event, and a cezar older than the parent watch would then outlive us — take the sidecar
+    // down here, then leave.
+    let shell_for_signal = shell.clone();
+    let _ = ctrlc::set_handler(move || {
+        if let Some(mut child) = shell_for_signal.child.lock().unwrap().take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        std::process::exit(0);
+    });
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
