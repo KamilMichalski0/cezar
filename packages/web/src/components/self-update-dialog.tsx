@@ -16,7 +16,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -44,16 +43,24 @@ export function SelfUpdateDialog({ open, onOpenChange }: { open: boolean; onOpen
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-slot="self-update-dialog" className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>cezar {data ? `v${data.version}` : ''}</DialogTitle>
-          <DialogDescription>{data ? installKindSentence(data) : 'Reading update state…'}</DialogDescription>
+          <DialogTitle className="flex items-center gap-2">
+            <span>cezar {data ? `v${data.version}` : ''}</span>
+            {data?.installed.find((entry) => entry.active)?.source === 'local' ? (
+              <Badge variant="outline">local build</Badge>
+            ) : null}
+          </DialogTitle>
+          <DialogDescription className="sr-only">Update cezar, pick a release channel or switch versions.</DialogDescription>
         </DialogHeader>
 
         {data ? (
-          <div className="flex flex-col gap-4">
-            <ChannelRow
+          <div className="flex flex-col gap-5">
+            <ChannelToggle
               data={data}
               busy={setChannel.isPending}
-              onChange={(channel) => setChannel.mutate(channel)}
+              onChange={(channel) => {
+                setPicked('')
+                setChannel.mutate(channel)
+              }}
             />
 
             <LatestCard
@@ -88,33 +95,17 @@ export function SelfUpdateDialog({ open, onOpenChange }: { open: boolean; onOpen
         ) : status.error ? (
           <p className="text-[13px] text-danger">{status.error.message}</p>
         ) : null}
-
-        <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
 
-function installKindSentence(data: SelfUpdateStatus): string {
-  switch (data.installKind) {
-    case 'managed':
-      return `Managed install — ${data.installed.find((entry) => entry.active)?.id ?? 'current'} under ~/.cezar/versions. Updates apply from here and restart cezar.`
-    case 'npx':
-      return 'Running from the npx cache.'
-    case 'global-npm':
-      return 'Installed globally with npm.'
-    case 'checkout':
-      return 'Running from a git checkout.'
-    default:
-      return 'Install location unknown.'
-  }
-}
+const CHANNELS: { value: UpdateChannel; label: string }[] = [
+  { value: 'stable', label: 'Stable' },
+  { value: 'nightly', label: 'Nightly' },
+]
 
-function ChannelRow({
+function ChannelToggle({
   data,
   busy,
   onChange,
@@ -128,19 +119,35 @@ function ChannelRow({
       <div className="min-w-0">
         <div className="text-[13px] font-semibold">Release channel</div>
         <div className="text-[12px] text-muted-foreground">
-          stable {data.latest.stable ? `v${data.latest.stable}` : '—'} · nightly{' '}
-          {data.latest.nightly ? `v${data.latest.nightly}` : '—'}
+          {data.channel === 'stable' ? 'Tagged releases.' : 'A fresh build of main every night.'}
         </div>
       </div>
-      <Select value={data.channel} onValueChange={(value) => onChange(value as UpdateChannel)} disabled={busy}>
-        <SelectTrigger size="sm" aria-label="Release channel" className="w-[130px] text-[13px]">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="stable">Stable</SelectItem>
-          <SelectItem value="nightly">Nightly</SelectItem>
-        </SelectContent>
-      </Select>
+      <div
+        role="radiogroup"
+        aria-label="Release channel"
+        data-slot="channel-toggle"
+        className="flex shrink-0 rounded-md border border-border bg-muted/40 p-0.5"
+      >
+        {CHANNELS.map((channel) => {
+          const active = data.channel === channel.value
+          return (
+            <button
+              key={channel.value}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              disabled={busy}
+              onClick={() => !active && onChange(channel.value)}
+              className={cn(
+                'rounded-[5px] px-3 py-1 text-[12.5px] font-semibold transition-colors',
+                active ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {channel.label}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -176,7 +183,10 @@ function LatestCard({
             <span className="font-semibold">v{target}</span> is available on {data.channel}.
           </>
         ) : (
-          <>You are on the newest {data.channel} version.</>
+          <>
+            You are on the newest {data.channel} version
+            {data.channel === 'nightly' && data.latest.nightly ? ` (v${data.latest.nightly})` : ''}.
+          </>
         )}
         {data.checkedAt ? (
           <div className="text-[11.5px] text-muted-foreground">checked {new Date(data.checkedAt).toLocaleTimeString()}</div>
@@ -213,21 +223,28 @@ function VersionPicker({
   // Local builds only exist in `installed`; registry versions come from `available`, with the
   // `installed` flag telling the two apart in the label.
   const options = useMemo(() => {
-    const locals = data.installed
-      .filter((entry) => entry.source === 'local')
-      .map((entry) => ({ value: entry.id, label: `v${entry.version} · local build`, installed: true, active: entry.active }))
-    const remote = data.available.map((entry) => ({
-      value: entry.version,
-      label: `v${entry.version}${entry.channel === 'nightly' ? ' · nightly' : ''}${entry.publishedAt ? ` · ${entry.publishedAt.slice(0, 10)}` : ''}`,
-      installed: entry.installed,
-      active: data.installed.some((row) => row.active && row.id === entry.version),
-    }))
+    const locals =
+      data.channel === 'stable'
+        ? data.installed
+            .filter((entry) => entry.source === 'local')
+            .map((entry) => ({ value: entry.id, label: `v${entry.version} · local build`, installed: true, active: entry.active }))
+        : []
+    const remote = data.available
+      .filter((entry) => entry.channel === data.channel)
+      .map((entry) => ({
+        value: entry.version,
+        label: `v${entry.version}${entry.publishedAt ? ` · ${entry.publishedAt.slice(0, 10)}` : ''}`,
+        installed: entry.installed,
+        active: data.installed.some((row) => row.active && row.id === entry.version),
+      }))
     return [...locals, ...remote]
   }, [data])
   const selected = options.find((option) => option.value === picked)
   return (
     <div data-slot="self-update-picker" className="flex flex-col gap-2">
-      <div className="text-[13px] font-semibold">Pick a version</div>
+      <div className="text-[13px] font-semibold">
+        Pick a version <span className="font-normal text-muted-foreground">· {data.channel}</span>
+      </div>
       <div className="flex items-center gap-2">
         <Select value={picked} onValueChange={onPick} disabled={options.length === 0 || jobBusy}>
           <SelectTrigger size="sm" aria-label="Version" className="min-w-0 flex-1 text-[13px]">
@@ -258,8 +275,7 @@ function VersionPicker({
         </Button>
       </div>
       <p className="text-[11.5px] text-muted-foreground">
-        Older versions work too — that is the downgrade path. Installed versions stay under
-        ~/.cezar/versions, so switching back is instant.
+        Any version, older ones included. Installed versions stay on disk, so switching back is instant.
       </p>
     </div>
   )
