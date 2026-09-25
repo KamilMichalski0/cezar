@@ -8,7 +8,7 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "build:debug": "tauri build --debug",
-    "icon": "tauri icon ../../packages/web/public/open-mercato.svg"
+    "icon": "node scripts/icon.mjs"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.9.0"

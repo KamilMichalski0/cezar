@@ -129,6 +129,22 @@ official Node tarball for the platform into `~/.cezar/node/<version>/` (verified
 are unaffected — `claude`'s native installer bundles its own runtime and `codex` is a binary —
 so this closes the last gap between "download the app" and "it works".
 
+## Replacing the icon (or any rebrand)
+
+The mark lives in three places, on two cadences:
+
+| Where | Ships with | Command |
+| --- | --- | --- |
+| Cockpit brand tile + favicon (`packages/web/public/open-mercato.svg`) | cezar (npm) — every channel update | replace the SVG |
+| App icon set (`packages/desktop/src-tauri/icons/*`: `.icns`, `.ico`, PNGs) and the splash logo (`packages/desktop/ui/open-mercato.svg`) | the shell — one shell release | `cd packages/desktop && npm run icon [-- path/to/new.svg]` |
+
+`npm run icon` wraps the SVG full-bleed (macOS masks its own squircle; a transparent margin
+gets a white plate in the Dock), renders it and runs `tauri icon`, then bumps nothing — bump
+the shell version, tag `desktop-v…`, and every installed app shows the new icon after its next
+launch (the shell auto-update). Nobody is stuck on an old icon: it is a bundle resource, not
+something installed once. macOS may keep the previous icon in its cache until the app is
+relaunched or `killall Dock`.
+
 ## Being an application — what makes it show up and launch like one
 
 The shell is a real native app the moment its release bundle is INSTALLED where the OS looks
