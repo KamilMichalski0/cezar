@@ -77,14 +77,13 @@ const INIT_SCRIPT: &str = r#"
       if (document.querySelector('[data-cez-update-pill]')) return;
       var strip = document.querySelector('[data-cez-legacy-titlebar]');
       if (!strip) { pending = version; return; }
-      var color = getComputedStyle(document.body).color || '#fff';
       var pill = document.createElement('button');
       pill.type = 'button';
       pill.setAttribute('data-cez-update-pill', '');
       pill.title = 'Update cezar to v' + version + ' and restart';
       pill.style.cssText = 'position:fixed;top:5px;left:80px;height:18px;z-index:2147483001;' +
         'display:inline-flex;align-items:center;gap:6px;padding:0 8px;border-radius:999px;' +
-        'border:1px solid rgba(168,243,114,.45);background:rgba(168,243,114,.16);color:' + color + ';' +
+        'border:1px solid rgba(168,243,114,.45);background:rgba(168,243,114,.16);color:inherit;' +
         'font:600 11px/1 -apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif;cursor:pointer;' +
         '-webkit-app-region:no-drag;';
       pill.innerHTML = '<span style="width:5px;height:5px;border-radius:50%;background:#fbbf24;animation:cezPulse 1.6s ease-in-out infinite"></span>' +
@@ -99,7 +98,7 @@ const INIT_SCRIPT: &str = r#"
       var style = document.createElement('style');
       style.textContent = '@keyframes cezPulse{0%,100%{opacity:1}50%{opacity:.35}}';
       document.head.appendChild(style);
-      document.body.appendChild(pill);
+      (document.querySelector('[data-slot="app-shell"]') || document.body).appendChild(pill);
     }
     // `offer_update` (Rust) calls this once the shell knows the channel has something newer.
     window.__CEZ_DESKTOP__.showUpdate = function (version) {
@@ -111,8 +110,8 @@ const INIT_SCRIPT: &str = r#"
 
     // A cockpit that knows about the shell paints its own transparent title strip
     // (`data-slot="desktop-titlebar"`). One that predates it does not, and the traffic lights
-    // would land on its brand row — so once the page has rendered, give it the strip and the
-    // 28px inset ourselves, in ITS colours, read off its own sidebar.
+    // would land on its brand row — so once the page has rendered, give it a transparent strip
+    // and inset its columns 28px, so they paint the band in their own (live) theme colours.
     var attempts = 0;
     var timer = setInterval(function () {
       attempts += 1;
@@ -120,17 +119,19 @@ const INIT_SCRIPT: &str = r#"
       var shell = document.querySelector('[data-slot="app-shell"]');
       if (!shell) { if (attempts > 40) clearInterval(timer); return; }
       clearInterval(timer);
-      var sidebar = document.querySelector('[data-slot="sidebar"]') || shell;
-      var cs = getComputedStyle(sidebar);
+      // Transparent strip + each column padded 28px: the columns paint the band in their OWN
+      // theme colours, so a light/dark switch in the cockpit changes the band with it — a
+      // colour read once here would not.
       var strip = document.createElement('div');
       strip.setAttribute('data-tauri-drag-region', '');
       strip.setAttribute('data-cez-legacy-titlebar', '');
       strip.style.cssText = 'position:fixed;top:0;left:0;right:0;height:28px;z-index:2147483000;' +
-        'background:' + cs.backgroundColor + ';border-bottom:1px solid ' + (cs.borderRightColor || 'transparent') + ';' +
         '-webkit-user-select:none;user-select:none;';
-      document.body.appendChild(strip);
+      shell.appendChild(strip);
       var style = document.createElement('style');
-      style.textContent = '[data-slot="app-shell"]{height:calc(100dvh - 28px)!important;margin-top:28px!important}';
+      style.textContent =
+        '[data-slot="app-shell"]>aside[data-slot="sidebar"],[data-slot="app-shell"]>div{padding-top:28px!important}' +
+        '[data-slot="sidebar-content"]>div:first-child{padding-top:6px!important}';
       document.head.appendChild(style);
       if (pending) { var v = pending; pending = null; renderPill(v); }
     }, 100);
