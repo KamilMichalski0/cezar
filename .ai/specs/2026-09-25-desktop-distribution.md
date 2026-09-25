@@ -94,7 +94,7 @@ Maintainer, per shell release:
 
 User: nothing. On the next launch the installed shell fetches `desktop-latest.json`, verifies
 the minisign signature against the compiled-in public key, downloads and installs the bundle
-in place (on macOS: the contents of `cezar.app`), and the NEW shell runs on the launch after
+in place (on macOS: the contents of `Cezar.app`), and the NEW shell runs on the launch after
 that. It never restarts under the user, so a running task is never interrupted by a shell
 update. A "Relaunch to update" prompt is a small later addition if the one-launch lag bothers.
 
@@ -137,7 +137,7 @@ for apps; nothing in cezar has to change per platform. `npx tauri build` (releas
 
 | Platform | Bundle | Installed how | Then it is… |
 | --- | --- | --- | --- |
-| macOS | `cezar.app` (+ `.dmg` to ship it) | drag into `/Applications` (the dmg's only step), or `brew install --cask` | in Launchpad, Spotlight, the Dock (right-click → Options → Keep in Dock), Cmd+Tab; icon, menu bar, About box from the bundle |
+| macOS | `Cezar.app` (+ `.dmg` to ship it) | drag into `/Applications` (the dmg's only step), or `brew install --cask` | in Launchpad, Spotlight, the Dock (right-click → Options → Keep in Dock), Cmd+Tab; icon, menu bar, About box from the bundle |
 | Windows | NSIS `cezar-…-setup.exe` (`.msi` optional) | run the installer, or `winget install` | Start menu entry, desktop shortcut, Apps & features (uninstall), taskbar pinning; needs WebView2, preinstalled on Windows 10/11 |
 | Linux | `.deb` (+ `.AppImage` portable) | `apt install ./cezar….deb` — installs `/usr/bin/cezar-desktop` and a `.desktop` entry | in the app launcher/menu with icon; the AppImage runs from anywhere but only appears in menus after `--appimage-integrate` or a Flatpak (later) |
 

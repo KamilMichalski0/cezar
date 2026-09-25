@@ -152,7 +152,7 @@ fn platform_name() -> &'static str {
 
 fn build_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-        .title("cezar")
+        .title("Cezar")
         .inner_size(1360.0, 900.0)
         .min_inner_size(720.0, 480.0)
         .center()
@@ -217,7 +217,7 @@ fn build_menu(app: &AppHandle, shell: &Shell) -> tauri::Result<()> {
     refresh_versions_menu(app, shell);
     let app_menu = Submenu::with_items(
         app,
-        "cezar",
+        "Cezar",
         true,
         &[
             &PredefinedMenuItem::about(app, None, None)?,
