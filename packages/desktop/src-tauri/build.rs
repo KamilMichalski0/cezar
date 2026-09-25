@@ -1,3 +1,9 @@
 fn main() {
-    tauri_build::build()
+    // `request_update` is the one command the cockpit page may invoke (the title strip's
+    // "Update cezar" pill on cockpits that predate the desktop-aware build); listing it here
+    // generates its `allow-request-update` permission for capabilities/default.json.
+    tauri_build::try_build(
+        tauri_build::Attributes::new().app_manifest(tauri_build::AppManifest::new().commands(&["request_update"])),
+    )
+    .expect("failed to run tauri-build");
 }

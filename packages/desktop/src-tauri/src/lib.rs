@@ -52,6 +52,10 @@ struct Shell {
     versions_menu: Mutex<Option<Submenu<tauri::Wry>>>,
     /// Set on every move/resize; a background writer persists the geometry shortly after.
     geometry_dirty: AtomicBool,
+    /// The running sidecar's version (from health) and the channel's newest when it is newer —
+    /// what the title strip's "Update cezar" button (legacy cockpits) is driven by.
+    running_version: Mutex<Option<String>>,
+    update_available: Mutex<Option<String>>,
 }
 
 /// Runs at document start on EVERY page the window loads — the splash and, after navigation,
@@ -64,6 +68,47 @@ const INIT_SCRIPT: &str = r#"
     window.__CEZ_DESKTOP__ = { platform: platform };
     document.documentElement.dataset.cezDesktop = platform;
     if (platform !== "macos" || location.protocol !== "http:") return;
+
+    // The title strip's "Update cezar" pill, for cockpits that predate the desktop-aware build
+    // (those paint their own from health's `latestVersion`). The shell calls `showUpdate` once it
+    // has compared the running version with the channel's newest on the registry.
+    var pending = null;
+    function renderPill(version) {
+      if (document.querySelector('[data-cez-update-pill]')) return;
+      var strip = document.querySelector('[data-cez-legacy-titlebar]');
+      if (!strip) { pending = version; return; }
+      var color = getComputedStyle(document.body).color || '#fff';
+      var pill = document.createElement('button');
+      pill.type = 'button';
+      pill.setAttribute('data-cez-update-pill', '');
+      pill.title = 'Update cezar to v' + version + ' and restart';
+      pill.style.cssText = 'position:fixed;top:5px;left:80px;height:18px;z-index:2147483001;' +
+        'display:inline-flex;align-items:center;gap:6px;padding:0 8px;border-radius:999px;' +
+        'border:1px solid rgba(168,243,114,.45);background:rgba(168,243,114,.16);color:' + color + ';' +
+        'font:600 11px/1 -apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif;cursor:pointer;' +
+        '-webkit-app-region:no-drag;';
+      pill.innerHTML = '<span style="width:5px;height:5px;border-radius:50%;background:#fbbf24;animation:cezPulse 1.6s ease-in-out infinite"></span>' +
+        'Update cezar <span style="font-family:ui-monospace,Menlo,monospace;font-weight:500;opacity:.7">v' + version + '</span>';
+      pill.onmouseenter = function () { pill.style.background = 'rgba(168,243,114,.3)'; };
+      pill.onmouseleave = function () { pill.style.background = 'rgba(168,243,114,.16)'; };
+      pill.onclick = function () {
+        pill.disabled = true;
+        pill.style.opacity = '.6';
+        if (window.__TAURI_INTERNALS__) window.__TAURI_INTERNALS__.invoke('update_cezar_command');
+      };
+      var style = document.createElement('style');
+      style.textContent = '@keyframes cezPulse{0%,100%{opacity:1}50%{opacity:.35}}';
+      document.head.appendChild(style);
+      document.body.appendChild(pill);
+    }
+    // `offer_update` (Rust) calls this once the shell knows the channel has something newer.
+    window.__CEZ_DESKTOP__.showUpdate = function (version) {
+      if (!version) return;
+      // A desktop-aware cockpit shows its own pill — never two.
+      if (document.querySelector('[data-slot="desktop-titlebar"]')) return;
+      renderPill(version);
+    };
+
     // A cockpit that knows about the shell paints its own transparent title strip
     // (`data-slot="desktop-titlebar"`). One that predates it does not, and the traffic lights
     // would land on its brand row — so once the page has rendered, give it the strip and the
@@ -87,6 +132,7 @@ const INIT_SCRIPT: &str = r#"
       var style = document.createElement('style');
       style.textContent = '[data-slot="app-shell"]{height:calc(100dvh - 28px)!important;margin-top:28px!important}';
       document.head.appendChild(style);
+      if (pending) { var v = pending; pending = null; renderPill(v); }
     }, 100);
   })();
 "#;
@@ -283,6 +329,87 @@ fn switch_version(shell: &Shell, id: &str) -> bool {
     true
 }
 
+/// The legacy strip's "Update cezar" button lands here (capability: `allow-update-cezar` for
+/// the cockpit's origin). Same flow as the menu item.
+#[tauri::command]
+fn update_cezar_command(app: AppHandle, shell: tauri::State<'_, Arc<Shell>>) {
+    let app = app.clone();
+    let shell = shell.inner().clone();
+    std::thread::spawn(move || update_cezar(&app, &shell, "Updating cezar…"));
+}
+
+/// semver-ish ordering for what cezar publishes (`0.11.1`, `0.11.1-nightly.20260924.49`):
+/// numeric core, a release above any prerelease of the same core, then identifiers.
+fn version_newer(candidate: &str, current: &str) -> bool {
+    fn parse(raw: &str) -> Option<([u64; 3], Vec<String>)> {
+        let raw = raw.trim().trim_start_matches('v').split('+').next()?;
+        let (core, pre) = match raw.split_once('-') {
+            Some((core, pre)) => (core, pre.split('.').map(str::to_owned).collect::<Vec<_>>()),
+            None => (raw, Vec::new()),
+        };
+        let mut parts = core.split('.').map(|part| part.parse::<u64>().ok());
+        Some(([parts.next()??, parts.next()??, parts.next()??], pre))
+    }
+    let (Some((a, pa)), Some((b, pb))) = (parse(candidate), parse(current)) else { return false };
+    if a != b {
+        return a > b;
+    }
+    match (pa.is_empty(), pb.is_empty()) {
+        (true, true) => false,
+        (true, false) => true,
+        (false, true) => false,
+        (false, false) => {
+            for (x, y) in pa.iter().zip(pb.iter()) {
+                let ord = match (x.parse::<u64>(), y.parse::<u64>()) {
+                    (Ok(nx), Ok(ny)) => nx.cmp(&ny),
+                    (Ok(_), Err(_)) => std::cmp::Ordering::Less,
+                    (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+                    _ => x.cmp(y),
+                };
+                if ord != std::cmp::Ordering::Equal {
+                    return ord == std::cmp::Ordering::Greater;
+                }
+            }
+            pa.len() > pb.len()
+        }
+    }
+}
+
+/// Ask npm (through the login shell, so registry config and auth apply) what the channel's
+/// dist-tag points at, and remember it when it is newer than the running sidecar. Silent on
+/// any failure — offline is "nothing to offer".
+fn check_cezar_update(app: &AppHandle, shell: &Shell) {
+    let running = shell.running_version.lock().unwrap().clone();
+    let Some(running) = running else { return };
+    let tag = release_tag();
+    let mut command = login_shell(&format!("npm view {PACKAGE}@{tag} version --json 2>/dev/null"));
+    command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    let Ok(output) = command.output() else { return };
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let latest = serde_json::from_str::<serde_json::Value>(raw.trim())
+        .ok()
+        .and_then(|value| match value {
+            serde_json::Value::String(v) => Some(v),
+            serde_json::Value::Array(items) => items.into_iter().filter_map(|v| v.as_str().map(str::to_owned)).last(),
+            _ => None,
+        });
+    let Some(latest) = latest else { return };
+    let newer = version_newer(&latest, &running).then_some(latest);
+    *shell.update_available.lock().unwrap() = newer.clone();
+    if let (Some(version), Some(window)) = (newer, app.get_webview_window("main")) {
+        offer_update(&window, &version);
+    }
+}
+
+/// Tell the page there is something newer. The desktop-aware cockpit ignores this (it paints
+/// its own button from the sidecar's check); a legacy one grows the button in its strip.
+fn offer_update(window: &WebviewWindow, version: &str) {
+    let _ = window.eval(&format!(
+        "window.__CEZ_DESKTOP__ && window.__CEZ_DESKTOP__.showUpdate && window.__CEZ_DESKTOP__.showUpdate({})",
+        js_string(version)
+    ));
+}
+
 pub fn run() {
     let shell = Arc::new(Shell {
         child: Mutex::new(None),
@@ -292,6 +419,8 @@ pub fn run() {
         open_item: Mutex::new(None),
         versions_menu: Mutex::new(None),
         geometry_dirty: AtomicBool::new(false),
+        running_version: Mutex::new(None),
+        update_available: Mutex::new(None),
     });
     let shell_for_setup = shell.clone();
     let shell_for_menu = shell.clone();
@@ -309,9 +438,12 @@ pub fn run() {
         std::process::exit(0);
     });
 
+    let shell_for_state = shell.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![update_cezar_command])
         .setup(move |app| {
+            app.manage(shell_for_state.clone());
             let handle = app.handle().clone();
             build_main_window(&handle)?;
             build_menu(&handle, &shell_for_setup)?;
@@ -482,11 +614,27 @@ fn supervise(app: AppHandle, shell: Arc<Shell>) {
         let pid = child.id();
 
         let url = format!("http://127.0.0.1:{port}");
-        if wait_for_health(port, &mut child, HEALTH_TIMEOUT) {
+        if let Some(version) = wait_for_health(port, &mut child, HEALTH_TIMEOUT) {
+            *shell.running_version.lock().unwrap() = Some(version);
+            *shell.update_available.lock().unwrap() = None;
             if let Ok(parsed) = url::Url::parse(&url) {
                 let _ = window.navigate(parsed);
             }
             probe_ipc(&window);
+            // Registry check for the legacy strip's button: now, then every half hour.
+            let app = app.clone();
+            let shell = shell.clone();
+            let generation = pid;
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(4));
+                check_cezar_update(&app, &shell);
+                std::thread::sleep(Duration::from_secs(30 * 60));
+                // A new sidecar starts its own checker; this one retires.
+                let current = shell.child.lock().unwrap().as_ref().map(|child| child.id());
+                if current != Some(generation) {
+                    return;
+                }
+            });
         } else {
             let tail = log.lock().unwrap().iter().cloned().collect::<Vec<_>>().join("\n");
             fail(&window, "cezar did not come up", &format!("No answer on {url} within {}s (pid {pid}).", HEALTH_TIMEOUT.as_secs()), &tail);
@@ -697,33 +845,37 @@ fn open_url(url: &str) {
     let _ = Command::new("xdg-open").arg(url).spawn();
 }
 
-/// A one-shot HTTP GET to `/api/v1/health` without an HTTP client dependency.
-fn health_ok(port: u16) -> bool {
-    let Ok(mut stream) = TcpStream::connect_timeout(&format!("127.0.0.1:{port}").parse().unwrap(), Duration::from_millis(500)) else {
-        return false;
-    };
+/// A one-shot HTTP GET to `/api/v1/health` without an HTTP client dependency. Answers the
+/// reported `version` on a 200, None otherwise.
+fn health_version(port: u16) -> Option<String> {
+    let mut stream = TcpStream::connect_timeout(&format!("127.0.0.1:{port}").parse().ok()?, Duration::from_millis(500)).ok()?;
     let _ = stream.set_read_timeout(Some(Duration::from_millis(1500)));
-    if stream.write_all(b"GET /api/v1/health HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").is_err() {
-        return false;
-    }
+    stream.write_all(b"GET /api/v1/health HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n").ok()?;
     let mut buffer = Vec::new();
     let _ = stream.read_to_end(&mut buffer);
-    let head = String::from_utf8_lossy(&buffer);
-    head.starts_with("HTTP/1.0 200") || head.starts_with("HTTP/1.1 200")
+    let text = String::from_utf8_lossy(&buffer);
+    if !(text.starts_with("HTTP/1.0 200") || text.starts_with("HTTP/1.1 200")) {
+        return None;
+    }
+    let body = text.split("\r\n\r\n").nth(1).unwrap_or("");
+    let version = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|json| json.get("version").and_then(|v| v.as_str()).map(str::to_owned));
+    Some(version.unwrap_or_default())
 }
 
-fn wait_for_health(port: u16, child: &mut Child, timeout: Duration) -> bool {
+fn wait_for_health(port: u16, child: &mut Child, timeout: Duration) -> Option<String> {
     let start = Instant::now();
     while start.elapsed() < timeout {
-        if health_ok(port) {
-            return true;
+        if let Some(version) = health_version(port) {
+            return Some(version);
         }
         if let Ok(Some(_)) = child.try_wait() {
-            return false; // died while starting
+            return None; // died while starting
         }
         std::thread::sleep(Duration::from_millis(300));
     }
-    false
+    None
 }
 
 /// 4321 first (the port every README names), the next few when it is busy, then anything free.
@@ -911,7 +1063,12 @@ fn probe_ipc(window: &WebviewWindow) {
         std::thread::sleep(Duration::from_millis(1500));
         let own_strip = own_strip_probe.is_ok() && window.is_maximized().unwrap_or(false);
         let _ = window.unmaximize();
-        eprintln!("[probe] direct invoke maximized: {direct}; drag-region double-click maximized: {via_drag_script}; legacy strip injected: {legacy_strip}; cockpit's own strip: {own_strip}");
+        std::thread::sleep(Duration::from_secs(6));
+        let _ = window.eval("document.querySelector('[data-cez-legacy-update]') && window.__TAURI_INTERNALS__.invoke('plugin:window|internal_toggle_maximize')");
+        std::thread::sleep(Duration::from_millis(1500));
+        let legacy_update = window.is_maximized().unwrap_or(false);
+        let _ = window.unmaximize();
+        eprintln!("[probe] direct invoke maximized: {direct}; drag-region double-click maximized: {via_drag_script}; legacy strip injected: {legacy_strip}; cockpit's own strip: {own_strip}; legacy update button: {legacy_update}");
     });
 }
 

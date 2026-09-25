@@ -281,8 +281,12 @@ export const AppShell = React.memo(function AppShell({
         <div
           data-slot="desktop-titlebar"
           data-tauri-drag-region=""
-          className="fixed inset-x-0 top-0 z-[60] h-[28px] select-none"
-        />
+          className="fixed inset-x-0 top-0 z-[60] flex h-[28px] select-none items-center pl-[80px]"
+        >
+          {version && latestVersion && latestVersion !== version ? (
+            <TitlebarUpdateButton latestVersion={latestVersion} />
+          ) : null}
+        </div>
       ) : null}
       <Sidebar {...nav} width={sidebarWidth} onWidthChange={changeSidebarWidth} desktop={desktop} />
       <div
@@ -318,6 +322,32 @@ export const AppShell = React.memo(function AppShell({
     </div>
   )
 })
+
+/**
+ * The title strip's "Update cezar" button (desktop shell only): shown whenever the channel the
+ * cockpit follows has something newer than what is running, sitting right after the traffic
+ * lights where the native title would be. One click starts the update — the dialog opens to
+ * show the install log and the restart, it does not ask again.
+ */
+function TitlebarUpdateButton({ latestVersion }: { latestVersion: string }) {
+  const [open, setOpen] = React.useState(false)
+  return (
+    <>
+      <button
+        type="button"
+        data-slot="titlebar-update"
+        onClick={() => setOpen(true)}
+        title={`Update cezar to v${latestVersion} and restart`}
+        className="inline-flex h-[18px] items-center gap-1 rounded-full border border-primary/40 bg-primary/15 px-2 text-[11px] font-semibold text-foreground transition-colors hover:bg-primary/30"
+      >
+        <StatusDot tone="pending" pulse className="size-[5px] shrink-0" />
+        Update cezar
+        <span className="font-mono font-medium text-muted-foreground">v{latestVersion}</span>
+      </button>
+      {open ? <SelfUpdateDialog open={open} onOpenChange={setOpen} autoApply={latestVersion} /> : null}
+    </>
+  )
+}
 
 /** Which desktop shell hosts this page, read once from the init script's `data-cez-desktop`
  *  (packages/desktop). Null in every browser. */

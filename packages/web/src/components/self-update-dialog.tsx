@@ -31,13 +31,30 @@ import { cn } from '@/lib/utils'
  * Only a managed install (`cezar install`) can do that to itself. Any other install kind gets
  * the reason and the one command that gets it there — never a download it could not use.
  */
-export function SelfUpdateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+export function SelfUpdateDialog({
+  open,
+  onOpenChange,
+  autoApply,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** Start installing this version as soon as the status confirms it can (the title strip's
+   *  "Update cezar" button): the dialog then only shows progress. Fires once per mount. */
+  autoApply?: string
+}) {
   const status = useSelfUpdate(open)
   const refresh = useRefreshSelfUpdate()
   const setChannel = useSetSelfUpdateChannel()
   const apply = useApplySelfUpdate()
   const [picked, setPicked] = useState<string>('')
   const data = status.data
+  const autoApplied = useRef(false)
+  useEffect(() => {
+    if (!autoApply || autoApplied.current || !data) return
+    if (!data.canSelfUpdate || data.job) return
+    autoApplied.current = true
+    apply.mutate(autoApply)
+  }, [autoApply, data, apply])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
