@@ -50,9 +50,9 @@ struct Shell {
 }
 
 /// Runs at document start on EVERY page the window loads — the splash and, after navigation,
-/// the cockpit. The cockpit reads `data-cez-desktop` to make room for the traffic lights in
-/// its sidebar header (see `packages/web/src/components/app-shell.tsx`); a browser tab on the
-/// same server never sees it.
+/// the cockpit. The cockpit reads `data-cez-desktop` to paint the title band the traffic lights
+/// sit in (see `packages/web/src/components/app-shell.tsx`); a browser tab on the same server
+/// never sees it.
 const INIT_SCRIPT: &str = r#"
   (function () {
     var platform = "__PLATFORM__";
@@ -78,13 +78,14 @@ fn build_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .min_inner_size(720.0, 480.0)
         .center()
         .initialization_script(INIT_SCRIPT.replace("__PLATFORM__", platform_name()));
-    // macOS: no title text; the traffic lights float over the 38px band the cockpit paints at
-    // the top (`data-slot="desktop-titlebar"`), centred in it.
+    // macOS: no title text; the traffic lights keep their NATIVE placement (a standard title bar
+    // is 28pt tall and puts them at the system offset) and float over the 28px band the cockpit
+    // paints at the top (`data-slot="desktop-titlebar"`). Native geometry, not ours — the
+    // lights then sit exactly where every other app's do.
     #[cfg(target_os = "macos")]
     let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true)
-        .traffic_light_position(tauri::LogicalPosition::new(14.0, 13.0));
+        .hidden_title(true);
     builder.build()
 }
 

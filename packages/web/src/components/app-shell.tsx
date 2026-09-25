@@ -271,14 +271,15 @@ export const AppShell = React.memo(function AppShell({
       className="flex h-dvh flex-col overflow-hidden bg-background text-foreground pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
     >
       {/* Desktop shell (packages/desktop, macOS): the native title bar is an overlay with no
-          title, so the page paints the band the traffic lights sit in; Tauri's injected handler
+          title, so the page paints the 28px band (a native title bar's height) the traffic lights sit
+          in at their native offset; Tauri's injected handler
           makes it draggable (`data-tauri-drag-region`) and double-click zooms. Only the shell's
           init script sets `desktop`, so a browser tab never gets the band. */}
       {desktop === 'macos' ? (
         <div
           data-slot="desktop-titlebar"
           data-tauri-drag-region=""
-          className="h-[38px] shrink-0 select-none border-b border-border bg-sidebar"
+          className="h-[28px] shrink-0 select-none border-b border-border bg-sidebar"
         />
       ) : null}
       <div className="flex min-h-0 flex-1">
