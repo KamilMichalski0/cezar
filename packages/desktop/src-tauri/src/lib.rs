@@ -157,7 +157,23 @@ fn build_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         // Hidden until the saved geometry is applied, so the window never flashes at the
         // default size and position before jumping to where the user left it.
         .visible(false)
-        .initialization_script(INIT_SCRIPT.replace("__PLATFORM__", platform_name()));
+        .initialization_script(INIT_SCRIPT.replace("__PLATFORM__", platform_name()))
+        // One window, on purpose. Anything that asks for another — `target="_blank"` links (the
+        // cockpit's PR and tracker links), `window.open`, the context menu's "Open Link in New
+        // Window" — goes to the default browser instead of silently doing nothing.
+        .on_new_window(|url, _features| {
+            open_url(url.as_str());
+            tauri::webview::NewWindowResponse::Deny
+        })
+        // Same-window navigation stays inside the cockpit (and the splash); a link to anywhere
+        // else is handed to the browser — the shell is the cockpit, not a general browser.
+        .on_navigation(|url| {
+            if is_own_origin(url) {
+                return true;
+            }
+            open_url(url.as_str());
+            false
+        });
     // macOS: no title text; the traffic lights keep their NATIVE placement (a standard title bar
     // is 28pt tall and puts them at the system offset) and float over the 28px band the cockpit
     // paints at the top (`data-slot="desktop-titlebar"`). Native geometry, not ours — the
@@ -835,6 +851,15 @@ fn login_shell(script: &str) -> Command {
 
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// The cockpit (loopback http) and the bundled splash (`tauri://` / `http://tauri.localhost`).
+fn is_own_origin(url: &url::Url) -> bool {
+    match url.scheme() {
+        "tauri" => true,
+        "http" | "https" => matches!(url.host_str(), Some("127.0.0.1") | Some("localhost") | Some("tauri.localhost")),
+        _ => false,
+    }
 }
 
 fn open_url(url: &str) {
