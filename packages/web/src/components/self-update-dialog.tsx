@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
-import { getSelfUpdate } from '@/api/client'
+import { getHealth, getSelfUpdate } from '@/api/client'
 import {
   useApplySelfUpdate,
   useRefreshSelfUpdate,
@@ -297,17 +297,22 @@ function JobPanel({ data }: { data: SelfUpdateStatus }) {
     if (job.status !== 'restarting') return
     let cancelled = false
     const startedAt = Date.now()
+    const back = () => {
+      setComeback('back')
+      queryClient.removeQueries({ queryKey: workspaceQueryKeys.selfUpdate })
+      window.setTimeout(() => window.location.reload(), 400)
+    }
     const tick = async () => {
       if (cancelled) return
       try {
-        const fresh = await getSelfUpdate()
-        // The old process still answering carries this very job; the new one starts clean.
-        if (!fresh.job) {
-          setComeback('back')
-          queryClient.removeQueries({ queryKey: workspaceQueryKeys.selfUpdate })
-          window.setTimeout(() => window.location.reload(), 400)
-          return
-        }
+        // Health is the one route EVERY version answers — a downgrade may land on a cezar that
+        // predates the update route. A different version is the new process; the same version
+        // (a switch between two builds of one release) is settled by the update status, which
+        // the old process answers with this very job and the new one without.
+        const health = await getHealth()
+        if (health.version !== data.version) return back()
+        const fresh = await getSelfUpdate().catch(() => null)
+        if (fresh && !fresh.job) return back()
       } catch {
         // Down between the two processes — expected.
       }
@@ -321,7 +326,7 @@ function JobPanel({ data }: { data: SelfUpdateStatus }) {
     return () => {
       cancelled = true
     }
-  }, [job.status, queryClient])
+  }, [job.status, data.version, queryClient])
 
   return (
     <div data-slot="self-update-job" className="flex flex-col gap-1.5">

@@ -35,7 +35,8 @@ if [ "$1" = "use" ] && [ -n "$2" ]; then
     ls -1 "$CEZ_VERSIONS" 2>/dev/null | grep -v '^${CURRENT_LINK}$' | grep -v '^\\.' | sed 's/^/  /' >&2
     exit 1
   fi
-  ln -sfn "$2" "$CEZ_VERSIONS/.current.tmp.$$" && mv -f "$CEZ_VERSIONS/.current.tmp.$$" "$CEZ_VERSIONS/${CURRENT_LINK}"
+  # \`ln -sfn\` replaces the link itself; a \`mv\` onto a symlink-to-directory would move INTO it.
+  ln -sfn "$2" "$CEZ_VERSIONS/${CURRENT_LINK}" || exit 1
   echo "cezar: now using $2"
   exit 0
 fi

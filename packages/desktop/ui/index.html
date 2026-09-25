@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>cezar</title>
+    <style>
+      :root {
+        --bg: #fafafa;
+        --fg: #171717;
+        --muted: #737373;
+        --border: #e5e5e5;
+        --accent: #6d5cff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #111113;
+          --fg: #ededed;
+          --muted: #8b8b93;
+          --border: #2a2a2e;
+        }
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      main {
+        height: 100%;
+        display: grid;
+        place-items: center;
+      }
+      .card {
+        width: min(440px, 88vw);
+        text-align: center;
+        display: grid;
+        gap: 14px;
+        justify-items: center;
+      }
+      .mark {
+        width: 56px;
+        height: 56px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #7c6cff, #4f46e5);
+        display: grid;
+        place-items: center;
+        color: white;
+        font-weight: 700;
+        font-size: 22px;
+        letter-spacing: -0.02em;
+      }
+      h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+      }
+      .spinner {
+        width: 18px;
+        height: 18px;
+        border: 2px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      pre {
+        -webkit-user-select: text;
+        user-select: text;
+        text-align: left;
+        width: 100%;
+        box-sizing: border-box;
+        margin: 0;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+        white-space: pre-wrap;
+        color: var(--fg);
+        background: transparent;
+        max-height: 40vh;
+        overflow: auto;
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="card">
+        <div class="mark">cz</div>
+        <h1 id="title">Starting cezar…</h1>
+        <p id="detail">Launching the local cockpit.</p>
+        <div id="spinner" class="spinner"></div>
+        <pre id="log" class="hidden"></pre>
+      </div>
+    </main>
+    <script>
+      // The Rust side drives this page through `eval` — no Tauri IPC is needed for a splash.
+      window.cezarSplash = {
+        set(title, detail) {
+          document.getElementById('title').textContent = title
+          document.getElementById('detail').textContent = detail
+        },
+        fail(title, detail, log) {
+          this.set(title, detail)
+          document.getElementById('spinner').classList.add('hidden')
+          const pre = document.getElementById('log')
+          pre.textContent = log || ''
+          pre.classList.toggle('hidden', !log)
+        },
+      }
+      const params = new URLSearchParams(location.search)
+      if (params.get('error')) {
+        window.cezarSplash.fail(params.get('title') || 'cezar stopped', params.get('error'), params.get('log') || '')
+      }
+    </script>
+  </body>
+</html>
