@@ -78,13 +78,13 @@ fn build_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .min_inner_size(720.0, 480.0)
         .center()
         .initialization_script(INIT_SCRIPT.replace("__PLATFORM__", platform_name()));
-    // macOS: no title text, and the traffic lights float INSIDE the cockpit's sidebar header
-    // (the brand row makes room for them) — no title bar strip at all, like Slack or Linear.
+    // macOS: no title text; the traffic lights float over the 38px band the cockpit paints at
+    // the top (`data-slot="desktop-titlebar"`), centred in it.
     #[cfg(target_os = "macos")]
     let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
         .hidden_title(true)
-        .traffic_light_position(tauri::LogicalPosition::new(14.0, 21.0));
+        .traffic_light_position(tauri::LogicalPosition::new(14.0, 13.0));
     builder.build()
 }
 
@@ -152,6 +152,9 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Remembers the window's position and size across launches (and across monitors), so
+        // the app opens where it was left instead of centred on the main display.
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .setup(move |app| {
             let handle = app.handle().clone();
             build_main_window(&handle)?;
@@ -272,6 +275,7 @@ fn supervise(app: AppHandle, shell: Arc<Shell>) {
             if let Ok(parsed) = url::Url::parse(&url) {
                 let _ = window.navigate(parsed);
             }
+            probe_ipc(&window);
         } else {
             let tail = log.lock().unwrap().iter().cloned().collect::<Vec<_>>().join("\n");
             fail(&window, "cezar did not come up", &format!("No answer on {url} within {}s (pid {pid}).", HEALTH_TIMEOUT.as_secs()), &tail);
@@ -571,6 +575,45 @@ fn pick_cwd() -> PathBuf {
         }
     }
     best.map(|(_, path)| path).unwrap_or(fallback)
+}
+
+/// Debug builds with `CEZ_DESKTOP_DEBUG_IPC=1`: after the cockpit loads, ask the page whether
+/// Tauri's internals are present and whether the window commands the drag handler needs are
+/// permitted from the cockpit's (remote) origin, and print the answer to stderr through the
+/// window title. Exists because a drag that silently does nothing is otherwise undiagnosable.
+fn probe_ipc(window: &WebviewWindow) {
+    if !cfg!(debug_assertions) || std::env::var_os("CEZ_DESKTOP_DEBUG_IPC").is_none() {
+        return;
+    }
+    let window = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(3));
+        let _ = window.eval(
+            r#"(function(){
+              var t = window.__TAURI_INTERNALS__;
+              var mark = function(v){ document.title = 'cezar-probe: ' + v; };
+              if (!t) { mark('no internals'); return; }
+              mark('internals present, invoking');
+              t.invoke('plugin:window|internal_toggle_maximize')
+                .then(function(){ mark('invoke ok'); return t.invoke('plugin:window|internal_toggle_maximize'); })
+                .catch(function(e){ mark('invoke error: ' + String(e)); });
+            })()"#,
+        );
+        // The cockpit rewrites document.title on its own schedule; poll and keep every
+        // distinct probe value seen.
+        let mut seen: Vec<String> = Vec::new();
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(6) {
+            if let Ok(title) = window.title() {
+                if title.starts_with("cezar-probe") && !seen.contains(&title) {
+                    seen.push(title);
+                }
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        eprintln!("[probe] {}", if seen.is_empty() { "nothing observed".to_string() } else { seen.join(" | ") });
+        let _ = window.eval("document.title = 'cezar'");
+    });
 }
 
 // ---- splash page ---------------------------------------------------------------------------

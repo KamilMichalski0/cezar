@@ -268,8 +268,20 @@ export const AppShell = React.memo(function AppShell({
     <div
       data-slot="app-shell"
       data-desktop={desktop ?? undefined}
-      className="flex h-dvh overflow-hidden bg-background text-foreground pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+      className="flex h-dvh flex-col overflow-hidden bg-background text-foreground pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
     >
+      {/* Desktop shell (packages/desktop, macOS): the native title bar is an overlay with no
+          title, so the page paints the band the traffic lights sit in; Tauri's injected handler
+          makes it draggable (`data-tauri-drag-region`) and double-click zooms. Only the shell's
+          init script sets `desktop`, so a browser tab never gets the band. */}
+      {desktop === 'macos' ? (
+        <div
+          data-slot="desktop-titlebar"
+          data-tauri-drag-region=""
+          className="h-[38px] shrink-0 select-none border-b border-border bg-sidebar"
+        />
+      ) : null}
+      <div className="flex min-h-0 flex-1">
       <Sidebar {...nav} width={sidebarWidth} onWidthChange={changeSidebarWidth} />
       <div className="grid min-w-0 flex-1 grid-rows-[auto_auto_1fr_auto] overflow-hidden">
         {/* The Sheet root renders no DOM of its own. Keep only the mobile controls inside its
@@ -295,6 +307,7 @@ export const AppShell = React.memo(function AppShell({
           data-slot="composer"
           className="row-start-4 pb-[env(safe-area-inset-bottom)]"
         />
+      </div>
       </div>
     </div>
   )
@@ -517,7 +530,6 @@ function SidebarContent({
   /** The drawer's close button. Absent on desktop, which has nothing to close. */
   headerAction?: ReactNode
 }) {
-  const desktop = useDesktopShell()
   return (
     <div
       data-slot="sidebar-content"
@@ -527,19 +539,9 @@ function SidebarContent({
       // an `@min-[…]/sidebar:` query and returns when the user drags the column wider.
       className="@container/sidebar flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
     >
-      {/* Desktop shell (packages/desktop, macOS): the title bar is an overlay with no title and
-          the traffic lights sit at (14, 21) — inside THIS row. The row shifts right to clear them
-          and becomes the window's drag handle (Tauri handles `data-tauri-drag-region`), so no
-          strip of chrome is spent above the app. A browser tab never gets the attribute. */}
-      <div
-        data-tauri-drag-region={desktop === 'macos' ? '' : undefined}
-        className={cn(
-          'flex items-center gap-[9px] px-3.5 pt-3.5 pb-2.5',
-          desktop === 'macos' && 'select-none pl-[78px]',
-        )}
-      >
+      <div className="flex items-center gap-[9px] px-3.5 pt-3.5 pb-2.5">
         <BrandTile />
-        <span data-tauri-drag-region={desktop === 'macos' ? '' : undefined} className="text-[15px] font-semibold">cezar</span>
+        <span className="text-[15px] font-semibold">cezar</span>
         {/* With project groups mounted the boot repo/branch is one group header among many —
             a chip repeating it up here would just be the first group's header said twice. */}
         {repo && !projectGroups ? (
