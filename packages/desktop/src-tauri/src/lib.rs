@@ -577,10 +577,12 @@ fn pick_cwd() -> PathBuf {
     best.map(|(_, path)| path).unwrap_or(fallback)
 }
 
-/// Debug builds with `CEZ_DESKTOP_DEBUG_IPC=1`: after the cockpit loads, ask the page whether
-/// Tauri's internals are present and whether the window commands the drag handler needs are
-/// permitted from the cockpit's (remote) origin, and print the answer to stderr through the
-/// window title. Exists because a drag that silently does nothing is otherwise undiagnosable.
+/// Debug builds with `CEZ_DESKTOP_DEBUG_IPC=1`: after the cockpit loads, exercise the two
+/// things window dragging needs from the cockpit's (remote) origin — a direct IPC call, and
+/// Tauri's injected drag handler reacting to a double-click on the title band — and print
+/// whether each actually maximized the window. A drag that silently does nothing is otherwise
+/// undiagnosable, and the page cannot report back any other way (document.title is not the
+/// native title).
 fn probe_ipc(window: &WebviewWindow) {
     if !cfg!(debug_assertions) || std::env::var_os("CEZ_DESKTOP_DEBUG_IPC").is_none() {
         return;
@@ -588,31 +590,25 @@ fn probe_ipc(window: &WebviewWindow) {
     let window = window.clone();
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_secs(3));
+        let _ = window.unmaximize();
+        std::thread::sleep(Duration::from_millis(500));
+        let _ = window.eval("window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke('plugin:window|internal_toggle_maximize')");
+        std::thread::sleep(Duration::from_millis(1500));
+        let direct = window.is_maximized().unwrap_or(false);
+        let _ = window.unmaximize();
+        std::thread::sleep(Duration::from_millis(500));
         let _ = window.eval(
             r#"(function(){
-              var t = window.__TAURI_INTERNALS__;
-              var mark = function(v){ document.title = 'cezar-probe: ' + v; };
-              if (!t) { mark('no internals'); return; }
-              mark('internals present, invoking');
-              t.invoke('plugin:window|internal_toggle_maximize')
-                .then(function(){ mark('invoke ok'); return t.invoke('plugin:window|internal_toggle_maximize'); })
-                .catch(function(e){ mark('invoke error: ' + String(e)); });
+              var el = document.querySelector('[data-slot=desktop-titlebar]') || document.body;
+              var o = { bubbles: true, cancelable: true, button: 0, detail: 2, clientX: 400, clientY: 10 };
+              el.dispatchEvent(new MouseEvent('mousedown', o));
+              el.dispatchEvent(new MouseEvent('mouseup', o));
             })()"#,
         );
-        // The cockpit rewrites document.title on its own schedule; poll and keep every
-        // distinct probe value seen.
-        let mut seen: Vec<String> = Vec::new();
-        let start = Instant::now();
-        while start.elapsed() < Duration::from_secs(6) {
-            if let Ok(title) = window.title() {
-                if title.starts_with("cezar-probe") && !seen.contains(&title) {
-                    seen.push(title);
-                }
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        eprintln!("[probe] {}", if seen.is_empty() { "nothing observed".to_string() } else { seen.join(" | ") });
-        let _ = window.eval("document.title = 'cezar'");
+        std::thread::sleep(Duration::from_millis(1500));
+        let via_drag_script = window.is_maximized().unwrap_or(false);
+        let _ = window.unmaximize();
+        eprintln!("[probe] direct invoke maximized: {direct}; drag-region double-click maximized: {via_drag_script}");
     });
 }
 
