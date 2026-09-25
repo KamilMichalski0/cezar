@@ -53,7 +53,7 @@ export function SelfUpdateDialog({ open, onOpenChange }: { open: boolean; onOpen
         </DialogHeader>
 
         {data ? (
-          <div className="flex flex-col gap-5">
+          <div className="flex min-w-0 flex-col gap-5">
             <ChannelToggle
               data={data}
               busy={setChannel.isPending}
@@ -241,13 +241,13 @@ function VersionPicker({
   }, [data])
   const selected = options.find((option) => option.value === picked)
   return (
-    <div data-slot="self-update-picker" className="flex flex-col gap-2">
+    <div data-slot="self-update-picker" className="flex min-w-0 flex-col gap-2">
       <div className="text-[13px] font-semibold">
         Pick a version <span className="font-normal text-muted-foreground">· {data.channel}</span>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <Select value={picked} onValueChange={onPick} disabled={options.length === 0 || jobBusy}>
-          <SelectTrigger size="sm" aria-label="Version" className="min-w-0 flex-1 text-[13px]">
+          <SelectTrigger size="sm" aria-label="Version" className="w-0 min-w-0 flex-1 text-[13px]">
             <SelectValue placeholder={options.length === 0 ? 'No versions known' : 'Choose a version to install'} />
           </SelectTrigger>
           <SelectContent className="max-h-72">
@@ -345,7 +345,7 @@ function JobPanel({ data }: { data: SelfUpdateStatus }) {
   }, [job.status, data.version, queryClient])
 
   return (
-    <div data-slot="self-update-job" className="flex flex-col gap-1.5">
+    <div data-slot="self-update-job" className="flex min-w-0 flex-col gap-1.5">
       <div className="flex items-center justify-between text-[12.5px]">
         <span className="font-semibold">
           {job.status === 'running'
@@ -358,11 +358,10 @@ function JobPanel({ data }: { data: SelfUpdateStatus }) {
                   ? 'Restart took too long — reload the page by hand'
                   : `Restarting into ${job.target}…`}
         </span>
-        <span className="text-muted-foreground">{job.log.length} lines</span>
       </div>
       <pre
         ref={logRef}
-        className="max-h-40 overflow-auto rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] leading-[1.5] text-muted-foreground"
+        className="max-h-40 min-w-0 overflow-y-auto rounded-md border border-border bg-background px-2 py-1.5 font-mono text-[11px] leading-[1.5] break-all whitespace-pre-wrap text-muted-foreground"
       >
         {job.log.join('\n')}
       </pre>
