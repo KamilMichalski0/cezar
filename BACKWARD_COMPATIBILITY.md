@@ -172,6 +172,16 @@ The Manage-skills opt-out (`importedSkills` in the global `~/.cezar/ui-state.jso
 
 Breaking: dropping a bin alias, raising `engines.node`, removing `packages/cezar/web/dist/` or `scripts/` from `files`, renaming the package. Required path: raise `engines` only in a version bump flagged as breaking; keep old aliases through a deprecation release.
 
+## 6a. Desktop shell ↔ cezar contract (`packages/desktop`, `packages/cezar/src/self-update/`, spec `.ai/specs/2026-09-25-desktop-distribution.md`)
+
+The desktop shell ships on its own version and contains no cezar code, so ANY shell version must run ANY cezar version. What the shell relies on, frozen:
+
+- **Entry path** `~/.cezar/versions/current/node_modules/@open-mercato/cezar/dist/index.js` (`CEZ_HOME` honoured), and the `~/.cezar/bin/cezar` launcher that execs it.
+- **Launch** `node <entry> serve --no-open --port <n>` with `CEZ_DESKTOP=1`, `CEZ_SUPERVISED=1` and `CEZ_SUPERVISOR_PID=<shell pid>` in the environment; `GET /api/v1/health` answering `200` is readiness.
+- **Exit status 75** from `serve` means "a new version is activated — relaunch me"; any other exit is a stop the shell reports. Under `CEZ_SUPERVISED=1` cezar exits 75 instead of re-exec'ing itself after a self-update, and exits on its own when the supervisor pid is gone or it is re-parented to pid 1.
+
+Breaking: moving the entry, renaming a flag or variable, changing the meaning of 75, or making `serve` need anything else from its parent. Required path: the shell ships first with support for both shapes, then cezar changes, then the old shape is dropped a release later.
+
 ## 7. Agent event protocol (`packages/cezar/src/core/agent-runner.ts`, `packages/cezar/src/core/ui-events.ts`)
 
 The normalized streams every runner emits — persisted to `runs/<id>.ndjson` and replayed by both the cockpit and `cezar run`'s console. Two layers ship together and both are contracts; `AGENT_PROTOCOL.md` is the full spec.

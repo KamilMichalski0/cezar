@@ -73,11 +73,17 @@ pub fn run() {
     let child_for_run = child.clone();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             let handle = app.handle().clone();
             build_main_window(&handle)?;
             let child = child_for_setup.clone();
-            std::thread::spawn(move || supervise(handle, child));
+            let supervisor_handle = handle.clone();
+            std::thread::spawn(move || supervise(supervisor_handle, child));
+            // The shell updates ITSELF rarely (spec 2026-09-25-desktop-distribution): check the
+            // release manifest once per launch, in the background, and install silently — the
+            // new shell takes over on the next launch. Never blocks startup; offline is a no-op.
+            tauri::async_runtime::spawn(async move { check_shell_update(handle).await });
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -110,6 +116,20 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+/// Silent self-update of the shell. `CEZ_DESKTOP_NO_UPDATE=1` disables it (development builds
+/// point at a checkout and must not replace themselves). Installed updates apply on the next
+/// launch rather than restarting under the user, so a running task is never interrupted by
+/// the shell — only the cockpit's own updater does that, and it asks first.
+async fn check_shell_update(app: AppHandle) {
+    use tauri_plugin_updater::UpdaterExt;
+    if std::env::var_os("CEZ_DESKTOP_NO_UPDATE").is_some() || cfg!(debug_assertions) {
+        return;
+    }
+    let Ok(updater) = app.updater() else { return };
+    let Ok(Some(update)) = updater.check().await else { return };
+    let _ = update.download_and_install(|_, _| {}, || {}).await;
 }
 
 /// Spawn → wait for health → show cockpit → wait for exit → relaunch on 75, report otherwise.
