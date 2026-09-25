@@ -162,6 +162,9 @@ fn spawn_sidecar(entry: &Path, port: u16, cwd: &Path, log: Arc<Mutex<VecDeque<St
         .current_dir(cwd)
         .env("CEZ_DESKTOP", "1")
         .env("CEZ_SUPERVISED", "1")
+        // cezar polls this pid and exits when it is gone — a force-quit of the shell never
+        // leaves a headless cockpit behind (the Exit handler only runs on a clean quit).
+        .env("CEZ_SUPERVISOR_PID", std::process::id().to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

@@ -340,6 +340,20 @@ async function serveCommand(
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+  // A supervisor that names itself (the desktop shell sets CEZ_SUPERVISOR_PID) may die without
+  // a chance to kill us — a force-quit, a crash. Nobody would find a headless cockpit still
+  // holding the port, so follow the parent down: `kill(pid, 0)` only probes for existence.
+  const supervisorPid = Number(process.env.CEZ_SUPERVISOR_PID);
+  if (Number.isInteger(supervisorPid) && supervisorPid > 0) {
+    setInterval(() => {
+      try {
+        process.kill(supervisorPid, 0);
+      } catch {
+        console.log('  supervisor is gone — shutting down');
+        shutdown();
+      }
+    }, 2_000).unref();
+  }
 
   // Open the browser only once the server actually answers, so the first
   // paint is the cockpit and never a connection error.
