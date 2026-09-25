@@ -9,7 +9,7 @@ import type { SelfUpdateJob, SelfUpdateStatus, UpdateChannel } from '@open-merca
 
 import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from '../workspace/config.ts';
 import { installFromLocal, installFromRegistry } from './installer.ts';
-import { activate, detectInstallKind, listInstalled, packageRootOf, type InstallKind } from './layout.ts';
+import { activate, detectInstallKind, findInstalled, listInstalled, packageRootOf, type InstallKind } from './layout.ts';
 import { distTagFor, RegistryCache, type PackageDocument } from './registry.ts';
 import { isNewer } from './semver.ts';
 
@@ -159,7 +159,7 @@ export class SelfUpdateService {
     };
     void (async () => {
       try {
-        const installed = listInstalled(this.env).find((entry) => entry.id === target || entry.version === target);
+        const installed = findInstalled(target, this.env);
         const id = installed ? installed.id : (await installFromRegistry(target, { onLog: log, env: this.env })).id;
         if (installed) log(`${id} is already installed`);
         activate(id, this.env);

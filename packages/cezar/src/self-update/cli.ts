@@ -4,7 +4,7 @@
  * service; this is what a headless box or a shell-only user gets.
  */
 
-import { activate, listInstalled } from './layout.ts';
+import { activate, findInstalled, listInstalled } from './layout.ts';
 import { ensurePathHook, isOnPath, writeLaunchers } from './launcher.ts';
 import { installFromRegistry } from './installer.ts';
 import { distTagFor, RegistryCache } from './registry.ts';
@@ -93,7 +93,7 @@ async function updateCommand(opts: SelfUpdateCliOptions): Promise<number> {
     console.log(`  ${status.reason ?? ''}\n  installing ${target} into the managed layout so \`cezar\` can run it:\n`);
   }
   try {
-    const installed = listInstalled().find((entry) => entry.id === target || entry.version === target);
+    const installed = findInstalled(target);
     const id = installed ? installed.id : (await installFromRegistry(target, { onLog: (line) => console.log(`  · ${line}`) })).id;
     activate(id);
     const dir = writeLaunchers();

@@ -97,6 +97,14 @@ export function listInstalled(env: NodeJS.ProcessEnv = process.env): InstalledEn
   return out.sort((a, b) => b.installedAt.localeCompare(a.installedAt));
 }
 
+/** Resolve an apply target to an installed entry: an exact id (`0.11.1+local`) first, else a
+ *  REGISTRY install of that version — a local build never stands in for the published release
+ *  it was cut from, or `cezar update` on a checkout would only ever re-activate the checkout. */
+export function findInstalled(target: string, env: NodeJS.ProcessEnv = process.env): InstalledEntry | undefined {
+  const installed = listInstalled(env);
+  return installed.find((entry) => entry.id === target) ?? installed.find((entry) => entry.source === 'registry' && entry.version === target);
+}
+
 /** The id `current` points at, or null when nothing is activated. */
 export function activeId(env: NodeJS.ProcessEnv = process.env): string | null {
   const link = join(versionsDir(env), CURRENT_LINK);

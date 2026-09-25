@@ -267,6 +267,11 @@ fn resolve_entry() -> Option<PathBuf> {
 /// The boot folder: the most recently opened registered project, else the home directory
 /// (which cezar never registers as a project — the cockpit then shows the registry).
 fn pick_cwd() -> PathBuf {
+    if let Some(explicit) = std::env::var_os("CEZ_DESKTOP_CWD").map(PathBuf::from) {
+        if explicit.is_dir() {
+            return explicit;
+        }
+    }
     let config = cezar_home().join("config.json");
     let fallback = home_dir();
     let Ok(raw) = std::fs::read_to_string(config) else { return fallback };
