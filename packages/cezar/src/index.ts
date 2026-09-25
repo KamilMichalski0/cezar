@@ -30,8 +30,10 @@ import {
   providersRequiredByWorkflow,
   unavailableProviderMessage,
 } from './server/provider-action-gate.ts';
-import { checkForUpdate } from './update-check.ts';
 import { printSkillsBanner } from './skills-banner.ts';
+import { SelfUpdateService } from './self-update/service.ts';
+import { isSupervised, restartProcess } from './self-update/restart.ts';
+import { runSelfUpdateCommand } from './self-update/cli.ts';
 import { initWorkspace } from './workspace/boot.ts';
 import { loadWorkspaceConfig } from './workspace/config.ts';
 import { runProjectsCommand } from './workspace/projects-cli.ts';
@@ -55,6 +57,11 @@ Usage:
   cezar server-install      interactive wizard to host cezar on a server
   cezar server-deploy       redeploy a new version (reload the service) + verify
   cezar server-uninstall    reverse a server-install
+  cezar install             install THIS cezar permanently under ~/.cezar (a \`cezar\`
+                            command on PATH that updates itself from the cockpit)
+  cezar update              update the managed install to the channel's newest version
+                            (--channel stable|nightly, --version <x> to pin or downgrade)
+  cezar versions            list installed versions (\`cezar use <id>\` switches)
 
 Options:
   -p, --port <n>              cockpit port (default 4321; server-install: this
@@ -115,6 +122,9 @@ async function main(): Promise<void> {
       yes: { type: 'boolean', default: false },
       reconfigure: { type: 'string' },
       reinstall: { type: 'boolean', default: false },
+      channel: { type: 'string' },
+      version: { type: 'string' },
+      'no-modify-path': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
     allowPositionals: true,
@@ -183,6 +193,18 @@ async function main(): Promise<void> {
         domain: values.domain,
       });
       return;
+    case 'install':
+    case 'update':
+    case 'versions':
+    case 'use':
+      // Managed install (self-update PoC): no server, no repo — only ~/.cezar and the registry.
+      process.exitCode = await runSelfUpdateCommand(command, positionals.slice(1), {
+        service: buildSelfUpdateService({ restart: () => {} }),
+        channel: values.channel,
+        version: values.version,
+        modifyPath: !values['no-modify-path'],
+      });
+      return;
     default:
       console.error(`unknown command: ${command}\n`);
       console.log(HELP);
@@ -247,17 +269,28 @@ async function serveCommand(
   );
   if (recovered > 0) console.log(`  recovered ${recovered} run(s) from the previous session`);
 
-  // Update discovery (#368) — fire-and-forget; the banner prints whenever the
-  // registry answers and /api/v1/health picks it up for the GUI chip.
+  const port = await pickPort(preferredPort);
+
+  // Update discovery (#368) through the self-update service (PoC): the channel's newest
+  // version lands on /api/v1/health as `latestVersion` for the chip, and the dialog behind the
+  // chip can apply it when this cezar runs from the managed layout (`cezar install`).
   const pkgName = readOwnName();
   const update: { latest?: string } = {};
-  void checkForUpdate(pkgName, version).then((latest) => {
+  let httpServer: ReturnType<typeof startServer> | null = null;
+  const selfUpdate = buildSelfUpdateService({
+    activeRuns: () => store.listRuns().filter((r) => ['queued', 'waiting', 'running'].includes(r.status)).length,
+    trimPaths: () => process.env.CEZ_REMOTE === '1' || (bindHost !== undefined && !['127.0.0.1', 'localhost', '::1'].includes(bindHost)),
+    restart: () => {
+      store.flush();
+      restartProcess({ server: httpServer, args: process.argv.slice(2), port, supervised: isSupervised() });
+    },
+  });
+  void selfUpdate.updateAvailable().then((latest) => {
     if (!latest) return;
     update.latest = latest;
-    console.log(`\n  ⬆ cezar ${latest} is available (running ${version}) — restart with: npx ${pkgName}@latest\n`);
+    const how = selfUpdate.installKind === 'managed' ? 'update from the cockpit or: cezar update' : `restart with: npx ${pkgName}@latest`;
+    console.log(`\n  ⬆ cezar ${latest} is available (running ${version}) — ${how}\n`);
   });
-
-  const port = await pickPort(preferredPort);
   // SECURITY: cezar executes agents. A non-loopback bind exposes that box to
   // whatever can reach the interface, and cezar itself has NO auth — it is only
   // for a deliberate hosted setup where a reverse proxy in front provides TLS +
@@ -273,7 +306,7 @@ async function serveCommand(
   // Set before the first run can start, read by every manager's `agentEnv` while dispatch is on.
   process.env.CEZ_API_URL = `http://127.0.0.1:${port}`;
   process.env.CEZ_BIN = resolve(process.argv[1] ?? fileURLToPath(import.meta.url));
-  startServer({
+  httpServer = startServer({
     repoRoot,
     store,
     manager,
@@ -285,6 +318,7 @@ async function serveCommand(
     providerAuth,
     providerRuntimeAuth,
     workspaceEvents,
+    selfUpdate,
   }, port);
   const url = `http://localhost:${port}`;
 
@@ -661,6 +695,21 @@ function openStore(repoRoot: string, opts?: { keepLive?: boolean }): RunStore {
   armRepoHandle(store, repoRoot);
   ensureDataGitignore(repoRoot);
   return store;
+}
+
+/** The self-update service over THIS process: its package, version and entry file. */
+function buildSelfUpdateService(
+  overrides: Partial<Pick<ConstructorParameters<typeof SelfUpdateService>[0], 'restart' | 'activeRuns' | 'trimPaths'>> & {
+    restart: () => void;
+  },
+): SelfUpdateService {
+  return new SelfUpdateService({
+    pkgName: readOwnName(),
+    version: readOwnVersion(),
+    entry: resolve(process.argv[1] ?? fileURLToPath(import.meta.url)),
+    supervised: isSupervised(),
+    ...overrides,
+  });
 }
 
 /** Own package name — for the npm-registry update check (#368). */

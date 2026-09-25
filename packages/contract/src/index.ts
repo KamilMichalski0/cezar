@@ -19,3 +19,4 @@ export * from './automation-schedule.ts';
 export * from './automations.ts';
 export * from './dispatch.ts';
 export * from './tracker.ts';
+export * from './self-update.ts';

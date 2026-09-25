@@ -19,6 +19,7 @@ import { openCommandPalette } from '@/components/command-palette'
 import { GithubIcon } from '@/components/icons'
 import { commandShortcutHint } from '@/lib/use-command-shortcut'
 import { Link, stripProjectPrefix } from '@/lib/project-router'
+import { SelfUpdateDialog } from '@/components/self-update-dialog'
 import { StatusDot } from '@/components/status-dot'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { Button } from '@/components/ui/button'
@@ -835,16 +836,24 @@ function CommandPaletteHint() {
  */
 function VersionChip({ version, latestVersion }: { version: string; latestVersion: string | null }) {
   const updateAvailable = Boolean(latestVersion && latestVersion !== version)
+  // The chip opens the self-update dialog (PoC): channel, latest, and a version picker.
+  const [open, setOpen] = React.useState(false)
   return (
-    <span
-      data-slot="version-chip"
-      data-update-available={updateAvailable ? 'true' : undefined}
-      title={updateAvailable ? `v${version} — update available: v${latestVersion}` : `v${version}`}
-      className="flex min-w-0 items-center gap-1 rounded-full border border-border px-1.5 py-px font-mono text-[10px] font-medium text-soft-foreground"
-    >
-      {updateAvailable ? <StatusDot tone="pending" pulse className="size-[5px] shrink-0" /> : null}
-      <span className="truncate">v{version}</span>
-    </span>
+    <>
+      <button
+        type="button"
+        data-slot="version-chip"
+        data-update-available={updateAvailable ? 'true' : undefined}
+        title={updateAvailable ? `v${version} — update available: v${latestVersion}` : `v${version}`}
+        aria-label={updateAvailable ? `cezar v${version}, update to v${latestVersion} available — open updater` : `cezar v${version} — open updater`}
+        onClick={() => setOpen(true)}
+        className="flex min-w-0 cursor-pointer items-center gap-1 rounded-full border border-border px-1.5 py-px font-mono text-[10px] font-medium text-soft-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      >
+        {updateAvailable ? <StatusDot tone="pending" pulse className="size-[5px] shrink-0" /> : null}
+        <span className="truncate">v{version}</span>
+      </button>
+      {open ? <SelfUpdateDialog open={open} onOpenChange={setOpen} /> : null}
+    </>
   )
 }
 
