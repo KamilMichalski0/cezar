@@ -56,6 +56,8 @@ struct Shell {
     /// what the title strip's "Update cezar" button (legacy cockpits) is driven by.
     running_version: Mutex<Option<String>>,
     update_available: Mutex<Option<String>>,
+    /// True while a supervisor thread is alive; the splash's "Try again" starts one when none is.
+    supervising: AtomicBool,
 }
 
 /// Runs at document start on EVERY page the window loads — the splash and, after navigation,
@@ -438,6 +440,7 @@ pub fn run() {
         geometry_dirty: AtomicBool::new(false),
         running_version: Mutex::new(None),
         update_available: Mutex::new(None),
+        supervising: AtomicBool::new(false),
     });
     let shell_for_setup = shell.clone();
     let shell_for_menu = shell.clone();
@@ -458,7 +461,7 @@ pub fn run() {
     let shell_for_state = shell.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![update_cezar_command])
+        .invoke_handler(tauri::generate_handler![update_cezar_command, retry_start])
         .setup(move |app| {
             app.manage(shell_for_state.clone());
             let handle = app.handle().clone();
@@ -590,12 +593,29 @@ async fn check_shell_update(app: AppHandle) {
 /// Spawn → wait for health → show cockpit → wait for exit → relaunch on 75 (or on a requested
 /// restart), report otherwise. A missing install is installed first.
 fn supervise(app: AppHandle, shell: Arc<Shell>) {
+    if shell.supervising.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    struct Done<'a>(&'a Shell);
+    impl Drop for Done<'_> {
+        fn drop(&mut self) {
+            self.0.supervising.store(false, Ordering::SeqCst);
+        }
+    }
+    let _done = Done(&shell);
     let window = loop {
         if let Some(window) = app.get_webview_window("main") {
             break window;
         }
         std::thread::sleep(Duration::from_millis(50));
     };
+
+    // Everything below needs Node 20+: the install, the sidecar, the update check. Without it
+    // the honest answer is a page that says so, with the download link and a retry — not npm's
+    // "command not found" three layers down.
+    if !require_node(&window) {
+        return;
+    }
 
     loop {
         let entry = match resolve_entry() {
@@ -695,6 +715,54 @@ fn supervise(app: AppHandle, shell: Arc<Shell>) {
     }
 }
 
+// ---- Node.js — the one prerequisite ---------------------------------------------------------
+
+/// The `node` the shell runs: `CEZ_DESKTOP_NODE` when set (a path, or a bogus one to test the
+/// missing-Node page), else whatever the login shell resolves.
+fn node_binary() -> String {
+    std::env::var("CEZ_DESKTOP_NODE").ok().filter(|v| !v.is_empty()).map(|v| shell_quote(&v)).unwrap_or_else(|| "node".into())
+}
+
+/// Node 20+ reachable through the login shell? Returns its version, or the reason it is not.
+fn check_node() -> Result<String, String> {
+    let mut command = login_shell(&format!("{} -p process.versions.node 2>/dev/null", node_binary()));
+    command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+    let output = command.output().map_err(|e| format!("could not start the login shell: {e}"))?;
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if !output.status.success() || version.is_empty() {
+        return Err("Node.js was not found on your PATH.".into());
+    }
+    let major = version.split('.').next().and_then(|m| m.parse::<u32>().ok()).unwrap_or(0);
+    if major < 20 {
+        return Err(format!("Node.js {version} is installed, but cezar needs 20 or newer."));
+    }
+    Ok(version)
+}
+
+/// The splash's "Try again" (after installing Node) lands here: start a supervisor when none
+/// is running. Idempotent — a click while one is alive does nothing.
+#[tauri::command]
+fn retry_start(app: AppHandle, shell: tauri::State<'_, Arc<Shell>>) {
+    if shell.supervising.load(Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    let shell = shell.inner().clone();
+    std::thread::spawn(move || supervise(app, shell));
+}
+
+/// Install from the shell needs Node too: check first and show the dedicated page instead of
+/// letting npm fail with a shell error.
+fn require_node(window: &WebviewWindow) -> bool {
+    match check_node() {
+        Ok(_) => true,
+        Err(reason) => {
+            fail_needs_node(window, &reason);
+            false
+        }
+    }
+}
+
 // ---- installing / updating cezar from the shell ------------------------------------------
 
 /// Install the channel's newest cezar into the managed layout and make it current — the same
@@ -722,7 +790,7 @@ mkdir -p "$V"
 S="$V/.staging-shell-$$"
 rm -rf "$S"; mkdir -p "$S"
 npm install --prefix "$S" --omit=dev --no-audit --no-fund --no-package-lock --loglevel=notice {package}@{tag}
-VER=$(node -p "require('$S/node_modules/{package}/package.json').version")
+VER=$({node} -p "require('$S/node_modules/{package}/package.json').version")
 test -f "$S/node_modules/{package}/dist/index.js"
 rm -rf "$V/$VER"
 mv "$S" "$V/$VER"
@@ -733,6 +801,7 @@ echo "installed $VER"
         versions = shell_quote(&versions.to_string_lossy()),
         package = PACKAGE,
         tag = tag,
+        node = node_binary(),
     );
     let mut command = login_shell(&script);
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -797,7 +866,7 @@ fn release_tag() -> &'static str {
 // ---- process -------------------------------------------------------------------------------
 
 fn spawn_sidecar(entry: &Path, port: u16, cwd: &Path, log: Arc<Mutex<VecDeque<String>>>) -> Result<Child, String> {
-    let script = format!("exec node {} serve --no-open --port {}", shell_quote(&entry.to_string_lossy()), port);
+    let script = format!("exec {} {} serve --no-open --port {}", node_binary(), shell_quote(&entry.to_string_lossy()), port);
     let mut command = login_shell(&script);
     command
         .current_dir(cwd)
@@ -1120,6 +1189,19 @@ fn fail(window: &WebviewWindow, title: &str, detail: &str, log: &str) {
         urlencode(detail),
         urlencode(title),
         urlencode(log)
+    )) {
+        let _ = window.navigate(url);
+    }
+}
+
+/// The missing-Node page: the reason, a download link (opens in the browser through the
+/// navigation handler) and a "Try again" button (the `retry_start` command).
+fn fail_needs_node(window: &WebviewWindow, reason: &str) {
+    if let Ok(url) = url::Url::parse(&format!(
+        "{}?needs_node=1&error={}&title={}",
+        app_origin(),
+        urlencode(reason),
+        urlencode("cezar needs Node.js 20 or newer")
     )) {
         let _ = window.navigate(url);
     }

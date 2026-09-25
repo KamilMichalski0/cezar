@@ -110,6 +110,31 @@
         max-height: 40vh;
         overflow: auto;
       }
+      .actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      .button {
+        appearance: none;
+        height: 30px;
+        padding: 0 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--foreground);
+        font: 600 12.5px/28px var(--sans);
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #0d0d0d;
+      }
+      .button:hover {
+        filter: brightness(0.96);
+      }
       .hidden {
         display: none;
       }
@@ -124,6 +149,11 @@
         <p id="detail">Launching the local cockpit.</p>
         <div id="spinner" class="spinner"></div>
         <pre id="log" class="hidden"></pre>
+        <div id="actions" class="actions hidden">
+          <a class="button primary" href="https://nodejs.org/en/download" target="_blank" rel="noreferrer">Download Node.js</a>
+          <button id="retry" class="button" type="button">Try again</button>
+        </div>
+        <p id="hint" class="hidden"></p>
       </div>
     </main>
     <script>
@@ -150,7 +180,17 @@
         },
       }
       const params = new URLSearchParams(location.search)
-      if (params.get('error')) {
+      if (params.get('needs_node')) {
+        window.cezarSplash.fail(params.get('title') || 'cezar needs Node.js', params.get('error') || '', '')
+        const actions = document.getElementById('actions')
+        actions.classList.remove('hidden')
+        document.getElementById('retry').onclick = function () {
+          this.disabled = true
+          this.textContent = 'Checking…'
+          if (window.__TAURI_INTERNALS__) window.__TAURI_INTERNALS__.invoke('retry_start')
+          setTimeout(() => { this.disabled = false; this.textContent = 'Try again' }, 4000)
+        }
+      } else if (params.get('error')) {
         window.cezarSplash.fail(params.get('title') || 'cezar stopped', params.get('error'), params.get('log') || '')
       } else if (params.get('title')) {
         window.cezarSplash.set(params.get('title'), params.get('detail') || '')

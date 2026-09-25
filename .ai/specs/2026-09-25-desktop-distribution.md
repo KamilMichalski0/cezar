@@ -75,6 +75,60 @@ and installs silently — the new shell takes over on the **next** launch. It ne
 the user (only the cockpit's own updater does that, after asking), never blocks startup, and is
 disabled in debug builds and by `CEZ_DESKTOP_NO_UPDATE=1`.
 
+## Shipping a shell change — what the maintainer does, what the user sees
+
+Most "app" changes never touch the shell: the title strip, the update pill, the dialog and
+everything else painted by the cockpit ship with cezar itself through the channel updates.
+The shell must ship only for native things — the app menu, window behaviour, the splash, the
+injected fallbacks for legacy cockpits, OS-level features (native notifications need a Tauri
+plugin in the shell, one release, then every cockpit version can use them).
+
+Maintainer, per shell release:
+
+1. Bump the shell version in all three manifests: `packages/desktop/package.json`,
+   `packages/desktop/src-tauri/Cargo.toml`, `packages/desktop/src-tauri/tauri.conf.json`.
+   The shell is versioned on its own (`0.1.0` today), never in step with cezar.
+2. `git tag desktop-v<version> && git push --tags`. `desktop-release.yml` builds, signs, uploads
+   the installers under stable names and publishes `desktop-latest.json`. (Or dispatch the
+   workflow by hand with the version.)
+
+User: nothing. On the next launch the installed shell fetches `desktop-latest.json`, verifies
+the minisign signature against the compiled-in public key, downloads and installs the bundle
+in place (on macOS: the contents of `cezar.app`), and the NEW shell runs on the launch after
+that. It never restarts under the user, so a running task is never interrupted by a shell
+update. A "Relaunch to update" prompt is a small later addition if the one-launch lag bothers.
+
+Until signing is set up, a shell update is manual: download the new `.dmg`, drag it over the
+old app. `~/.cezar` (versions, settings, window geometry) is untouched by that.
+
+## One-time setup checklist (before the first public shell release)
+
+| Step | Where | Why |
+| --- | --- | --- |
+| Back up `~/.tauri/cezar-desktop.key` (private half of the updater keypair, generated 2026-09-25, no password) | password manager / team vault | lose it and no installed shell can ever adopt another update; the public half is in `tauri.conf.json` |
+| Add `TAURI_SIGNING_PRIVATE_KEY` (the file's contents) as a repository secret | GitHub → Settings → Secrets | without it the workflow builds installers but no `desktop-latest.json`, so shells never see a new version |
+| Join the Apple Developer Program (99 USD/year), create a Developer ID Application certificate, export as base64 `.p12` | developer.apple.com | Gatekeeper refuses unsigned apps ("damaged"); the updater refuses unsigned bundles |
+| Add `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific), `APPLE_TEAM_ID` | GitHub secrets | tauri-action signs and notarizes with these; all-or-nothing |
+| Windows: Azure Trusted Signing (or an EV cert), wired through `bundle.windows.signCommand` | later | SmartScreen otherwise warns on every install |
+| Cut `desktop-v0.1.0` and check the workflow summary shows no "UNSIGNED" warning | GitHub Actions | the first real run will surface platform-specific matrix issues |
+| Landing page + Homebrew tap pointing at the stable asset URLs | after the first green release | see "Downstream pointers" |
+
+## The Node.js prerequisite
+
+The shell runs cezar with the user's own Node (through the login shell, so nvm/volta/homebrew
+installs resolve). Node 20+ is the ONE thing the installer cannot provide today, and it is
+checked first: without it — or with an older one — the splash shows "cezar needs Node.js 20 or
+newer" with the reason, a **Download Node.js** button (opens nodejs.org in the browser) and
+**Try again** (re-runs the check and boots without relaunching the app). Nothing else runs
+until Node is there: no npm, no sidecar, no update check. `CEZ_DESKTOP_NODE=<path>` overrides
+which node the shell uses (also how the page is tested).
+
+Next step, so the app has NO prerequisite: a managed Node runtime. The shell downloads the
+official Node tarball for the platform into `~/.cezar/node/<version>/` (verified against
+`SHASUMS256.txt`), and runs the sidecar with it when the login shell has none. The agent CLIs
+are unaffected — `claude`'s native installer bundles its own runtime and `codex` is a binary —
+so this closes the last gap between "download the app" and "it works".
+
 ## Downstream pointers (in the order to add them)
 
 1. **Landing page "Download"** — a static page (Cloudflare/GitHub Pages) with OS detection and
@@ -109,8 +163,10 @@ of them is the one case where the shell must ship BEFORE the cezar version that 
 - **Legacy title strip**: a cockpit that predates the desktop-aware shell paints no strip and the
   traffic lights would sit on its brand row. The shell's init script waits for the app to
   render, and when no `data-slot="desktop-titlebar"` appears it injects a draggable 28px strip
-  in the cockpit's own sidebar colours and insets the app shell — so every version looks right
-  under the shell, not only the ones that know about it.
+  (transparent, with the columns inset so they paint the band in their own live theme colours)
+  and insets the app shell — so every version looks right under the shell, not only the ones
+  that know about it. The same path injects the "Update cezar" pill there, driven by the
+  shell's own `npm view` of the channel's dist-tag; a desktop-aware cockpit paints its own.
 - **Port**: 4321 first (so `http://localhost:4321` works in a browser beside the app), the
   next few when busy, then any free port; the actual URL is on the app menu's
   "Open … in browser" item.
