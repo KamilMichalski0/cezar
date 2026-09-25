@@ -262,11 +262,25 @@ export const AppShell = React.memo(function AppShell({
     singleProject,
   }
 
+  const desktop = useDesktopShell()
+
   return (
     <div
       data-slot="app-shell"
-      className="flex h-dvh overflow-hidden bg-background text-foreground pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+      data-desktop={desktop ?? undefined}
+      className="flex h-dvh flex-col overflow-hidden bg-background text-foreground pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
     >
+      {/* Desktop shell (packages/desktop): the native title bar is an overlay with no title, so
+          the page paints the band the traffic lights sit in and Tauri makes it draggable. Only
+          the `data-cez-desktop` init script sets `desktop`; a browser tab never gets the band. */}
+      {desktop === 'macos' ? (
+        <div
+          data-slot="desktop-titlebar"
+          data-tauri-drag-region
+          className="h-[38px] shrink-0 select-none border-b border-border bg-sidebar"
+        />
+      ) : null}
+      <div className="flex min-h-0 flex-1">
       <Sidebar {...nav} width={sidebarWidth} onWidthChange={changeSidebarWidth} />
       <div className="grid min-w-0 flex-1 grid-rows-[auto_auto_1fr_auto] overflow-hidden">
         {/* The Sheet root renders no DOM of its own. Keep only the mobile controls inside its
@@ -293,9 +307,21 @@ export const AppShell = React.memo(function AppShell({
           className="row-start-4 pb-[env(safe-area-inset-bottom)]"
         />
       </div>
+      </div>
     </div>
   )
 })
+
+/** Which desktop shell hosts this page, read once from the init script's `data-cez-desktop`
+ *  (packages/desktop). Null in every browser. */
+function useDesktopShell(): 'macos' | 'windows' | 'linux' | null {
+  const [platform] = React.useState<'macos' | 'windows' | 'linux' | null>(() => {
+    if (typeof document === 'undefined') return null
+    const value = document.documentElement.dataset.cezDesktop
+    return value === 'macos' || value === 'windows' || value === 'linux' ? value : null
+  })
+  return platform
+}
 
 type NavProps = {
   activeTo: string | null

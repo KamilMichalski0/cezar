@@ -20,7 +20,45 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Manager, RunEvent, WebviewWindow, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+
+/// Runs at document start on EVERY page the window loads — the splash and, after navigation,
+/// the cockpit. The cockpit reads `data-cez-desktop` to add the title-bar band the overlay
+/// title bar needs (see `packages/web/src/components/app-shell.tsx`); a browser tab on the
+/// same server never sees it.
+const INIT_SCRIPT: &str = r#"
+  (function () {
+    var platform = "__PLATFORM__";
+    window.__CEZ_DESKTOP__ = { platform: platform };
+    document.documentElement.dataset.cezDesktop = platform;
+  })();
+"#;
+
+fn platform_name() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "macos"
+    } else if cfg!(windows) {
+        "windows"
+    } else {
+        "linux"
+    }
+}
+
+fn build_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .title("cezar")
+        .inner_size(1360.0, 900.0)
+        .min_inner_size(720.0, 480.0)
+        .center()
+        .initialization_script(INIT_SCRIPT.replace("__PLATFORM__", platform_name()));
+    // macOS: no title text, traffic lights floating over the cockpit's own top band — the
+    // native bar reads as part of the app instead of a grey strip above it.
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true);
+    builder.build()
+}
 
 /// Exit status the sidecar uses to say "relaunch me" after a self-update (EX_TEMPFAIL).
 const RESTART_EXIT_CODE: i32 = 75;
@@ -37,6 +75,7 @@ pub fn run() {
     tauri::Builder::default()
         .setup(move |app| {
             let handle = app.handle().clone();
+            build_main_window(&handle)?;
             let child = child_for_setup.clone();
             std::thread::spawn(move || supervise(handle, child));
             Ok(())
