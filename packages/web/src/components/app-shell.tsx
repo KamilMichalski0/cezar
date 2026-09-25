@@ -268,23 +268,29 @@ export const AppShell = React.memo(function AppShell({
     <div
       data-slot="app-shell"
       data-desktop={desktop ?? undefined}
-      className="flex h-dvh flex-col overflow-hidden bg-background text-foreground pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
+      className="flex h-dvh overflow-hidden bg-background text-foreground pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
     >
-      {/* Desktop shell (packages/desktop, macOS): the native title bar is an overlay with no
-          title, so the page paints the 28px band (a native title bar's height) the traffic lights sit
-          in at their native offset; Tauri's injected handler
-          makes it draggable (`data-tauri-drag-region`) and double-click zooms. Only the shell's
-          init script sets `desktop`, so a browser tab never gets the band. */}
+      {/* Desktop shell (packages/desktop, macOS): the native title bar is a transparent overlay
+          with no title, 28px tall (a title bar's native height), and the traffic lights sit at
+          their native offset. Nothing is PAINTED for it — each column carries 28px of top
+          padding so its own colour runs to the window's edge, the way Finder's sidebar does —
+          and this transparent strip on top is what Tauri's injected handler drags the window by
+          (double-click zooms). Only the shell's init script sets `desktop`; a browser tab never
+          gets any of it. */}
       {desktop === 'macos' ? (
         <div
           data-slot="desktop-titlebar"
           data-tauri-drag-region=""
-          className="h-[28px] shrink-0 select-none border-b border-border bg-sidebar"
+          className="fixed inset-x-0 top-0 z-[60] h-[28px] select-none"
         />
       ) : null}
-      <div className="flex min-h-0 flex-1">
-      <Sidebar {...nav} width={sidebarWidth} onWidthChange={changeSidebarWidth} />
-      <div className="grid min-w-0 flex-1 grid-rows-[auto_auto_1fr_auto] overflow-hidden">
+      <Sidebar {...nav} width={sidebarWidth} onWidthChange={changeSidebarWidth} desktop={desktop} />
+      <div
+        className={cn(
+          'grid min-w-0 flex-1 grid-rows-[auto_auto_1fr_auto] overflow-hidden',
+          desktop === 'macos' && 'pt-[28px]',
+        )}
+      >
         {/* The Sheet root renders no DOM of its own. Keep only the mobile controls inside its
             context so a sidebar update cannot propagate through the routed view. */}
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
@@ -308,7 +314,6 @@ export const AppShell = React.memo(function AppShell({
           data-slot="composer"
           className="row-start-4 pb-[env(safe-area-inset-bottom)]"
         />
-      </div>
       </div>
     </div>
   )
@@ -352,14 +357,22 @@ type NavProps = {
  * the class is left off entirely below `md`, where `hidden` takes the element out of flow and the
  * drawer (a fixed 264px) is the sidebar instead.
  */
-const Sidebar = React.memo(function Sidebar({ width, onWidthChange, ...props }: NavProps & SidebarResize) {
+const Sidebar = React.memo(function Sidebar({
+  width,
+  onWidthChange,
+  desktop = null,
+  ...props
+}: NavProps & SidebarResize & { desktop?: 'macos' | 'windows' | 'linux' | null }) {
   return (
     <aside
       data-slot="sidebar"
       style={{ width }}
-      className="relative hidden shrink-0 flex-col border-r border-border bg-sidebar md:flex"
+      className={cn(
+        'relative hidden shrink-0 flex-col border-r border-border bg-sidebar md:flex',
+        desktop === 'macos' && 'pt-[28px]',
+      )}
     >
-      <SidebarContent {...props} />
+      <SidebarContent {...props} compactHeader={desktop === 'macos'} />
       <SidebarResizeHandle width={width} onWidthChange={onWidthChange} />
     </aside>
   )
@@ -523,6 +536,7 @@ function SidebarContent({
   singleProject,
   onNavigate,
   headerAction,
+  compactHeader = false,
 }: NavProps & {
   /** Fires on any in-drawer navigation. The route-change effect already closes the drawer for
    *  every *changed* route; this also covers re-clicking the active item (per the spec, Tasks
@@ -530,6 +544,10 @@ function SidebarContent({
   onNavigate?: () => void
   /** The drawer's close button. Absent on desktop, which has nothing to close. */
   headerAction?: ReactNode
+  /** Under the desktop shell's title strip the brand row already has 28px above it, so it
+   *  gives up most of its own top padding — otherwise the logo floats a full toolbar's height
+   *  below the traffic lights. */
+  compactHeader?: boolean
 }) {
   return (
     <div
@@ -540,7 +558,7 @@ function SidebarContent({
       // an `@min-[…]/sidebar:` query and returns when the user drags the column wider.
       className="@container/sidebar flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
     >
-      <div className="flex items-center gap-[9px] px-3.5 pt-3.5 pb-2.5">
+      <div className={cn('flex items-center gap-[9px] px-3.5 pb-2.5', compactHeader ? 'pt-1.5' : 'pt-3.5')}>
         <BrandTile />
         <span className="text-[15px] font-semibold">cezar</span>
         {/* With project groups mounted the boot repo/branch is one group header among many —

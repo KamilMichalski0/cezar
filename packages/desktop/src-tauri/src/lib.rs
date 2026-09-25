@@ -47,6 +47,8 @@ struct Shell {
     restart_requested: AtomicBool,
     updating: AtomicBool,
     open_item: Mutex<Option<MenuItem<tauri::Wry>>>,
+    /// Set on every move/resize; a background writer persists the geometry shortly after.
+    geometry_dirty: AtomicBool,
 }
 
 /// Runs at document start on EVERY page the window loads — the splash and, after navigation,
@@ -77,6 +79,9 @@ fn build_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .inner_size(1360.0, 900.0)
         .min_inner_size(720.0, 480.0)
         .center()
+        // Hidden until the saved geometry is applied, so the window never flashes at the
+        // default size and position before jumping to where the user left it.
+        .visible(false)
         .initialization_script(INIT_SCRIPT.replace("__PLATFORM__", platform_name()));
     // macOS: no title text; the traffic lights keep their NATIVE placement (a standard title bar
     // is 28pt tall and puts them at the system offset) and float over the 28px band the cockpit
@@ -86,7 +91,28 @@ fn build_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
         .hidden_title(true);
-    builder.build()
+    let window = builder.build()?;
+    let restored = apply_saved_geometry(&window);
+    let _ = window.show();
+    // macOS resolves a hidden window's screen lazily; re-assert the position once it is on
+    // screen so the first paint lands where it should, not where AppKit cascaded it.
+    if let Some((x, y)) = restored {
+        let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+    }
+    if cfg!(debug_assertions) {
+        let probe = window.clone();
+        std::thread::spawn(move || {
+            for delay in [0u64, 500, 1500, 4000] {
+                std::thread::sleep(Duration::from_millis(delay));
+                if let (Ok(position), Ok(size), Ok(scale)) = (probe.outer_position(), probe.inner_size(), probe.scale_factor()) {
+                    let position = position.to_logical::<f64>(scale);
+                    let size = size.to_logical::<f64>(scale);
+                    eprintln!("[geometry] +{delay}ms at ({}, {}) {}x{} scale {scale}", position.x, position.y, size.width, size.height);
+                }
+            }
+        });
+    }
+    Ok(window)
 }
 
 fn build_menu(app: &AppHandle, shell: &Shell) -> tauri::Result<()> {
@@ -146,10 +172,12 @@ pub fn run() {
         restart_requested: AtomicBool::new(false),
         updating: AtomicBool::new(false),
         open_item: Mutex::new(None),
+        geometry_dirty: AtomicBool::new(false),
     });
     let shell_for_setup = shell.clone();
     let shell_for_menu = shell.clone();
     let shell_for_run = shell.clone();
+    let shell_for_events = shell.clone();
     // SIGTERM/SIGINT (a `kill`, a logout, a supervisor of our own) never reach Tauri's Exit
     // event, and a cezar older than the parent watch would then outlive us — take the sidecar
     // down here, then leave.
@@ -164,9 +192,6 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
-        // Remembers the window's position and size across launches (and across monitors), so
-        // the app opens where it was left instead of centred on the main display.
-        .plugin(tauri_plugin_window_state::Builder::new().build())
         .setup(move |app| {
             let handle = app.handle().clone();
             build_main_window(&handle)?;
@@ -174,6 +199,17 @@ pub fn run() {
             let shell = shell_for_setup.clone();
             let supervisor_handle = handle.clone();
             std::thread::spawn(move || supervise(supervisor_handle, shell));
+            // Geometry writer: coalesces the burst of move/resize events into one file write.
+            let shell = shell_for_setup.clone();
+            let writer_handle = handle.clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_millis(400));
+                if shell.geometry_dirty.swap(false, Ordering::SeqCst) {
+                    if let Some(window) = writer_handle.get_webview_window("main") {
+                        save_geometry(&window);
+                    }
+                }
+            });
             // The shell updates ITSELF rarely (spec 2026-09-25-desktop-distribution): check the
             // release manifest once per launch, in the background, and install silently — the
             // new shell takes over on the next launch. Never blocks startup; offline is a no-op.
@@ -194,7 +230,27 @@ pub fn run() {
             }
             _ => {}
         })
-        .on_window_event(|window, event| {
+        .on_window_event(move |window, event| {
+            match event {
+                WindowEvent::Moved(position) => {
+                    if cfg!(debug_assertions) {
+                        eprintln!("[geometry] moved to physical ({}, {}) scale {:?}", position.x, position.y, window.scale_factor().ok());
+                    }
+                    shell_for_events.geometry_dirty.store(true, Ordering::SeqCst);
+                }
+                WindowEvent::Resized(size) => {
+                    if cfg!(debug_assertions) {
+                        eprintln!("[geometry] resized to physical {}x{}", size.width, size.height);
+                    }
+                    shell_for_events.geometry_dirty.store(true, Ordering::SeqCst);
+                }
+                WindowEvent::CloseRequested { .. } => {
+                    if let Some(webview) = window.get_webview_window("main") {
+                        save_geometry(&webview);
+                    }
+                }
+                _ => {}
+            }
             // macOS convention: closing the window keeps the app (and the agents it is running)
             // alive in the Dock; Cmd+Q quits.
             #[cfg(target_os = "macos")]
@@ -202,8 +258,6 @@ pub fn run() {
                 api.prevent_close();
                 let _ = window.hide();
             }
-            #[cfg(not(target_os = "macos"))]
-            let _ = (window, event);
         })
         .build(tauri::generate_context!())
         .expect("failed to build the cezar desktop shell")
@@ -216,7 +270,9 @@ pub fn run() {
                 }
             }
             RunEvent::Exit => {
-                let _ = app;
+                if let Some(window) = app.get_webview_window("main") {
+                    save_geometry(&window);
+                }
                 if let Some(mut child) = shell_for_run.child.lock().unwrap().take() {
                     let _ = child.kill();
                     let _ = child.wait();
@@ -535,6 +591,88 @@ fn pick_port() -> u16 {
         }
     }
     TcpListener::bind("127.0.0.1:0").and_then(|listener| listener.local_addr()).map(|addr| addr.port()).unwrap_or(4321)
+}
+
+// ---- window geometry -----------------------------------------------------------------------
+//
+// Position and size are remembered in LOGICAL points (`~/.cezar/desktop-window.json`), never
+// physical pixels: macOS's global coordinate space is in points, so a logical rectangle means
+// the same thing on a Retina laptop panel and a 1x external display. (tauri-plugin-window-state
+// saves physical pixels and restores the position before the size, so a window carried to a
+// monitor with a different scale came back at the wrong size — the bug this replaces.)
+
+fn geometry_path() -> PathBuf {
+    cezar_home().join("desktop-window.json")
+}
+
+fn save_geometry(window: &WebviewWindow) {
+    if window.is_minimized().unwrap_or(false) || !window.is_visible().unwrap_or(true) {
+        return;
+    }
+    let Ok(scale) = window.scale_factor() else { return };
+    let Ok(position) = window.outer_position() else { return };
+    let Ok(size) = window.inner_size() else { return };
+    let maximized = window.is_maximized().unwrap_or(false);
+    let mut json = std::fs::read_to_string(geometry_path())
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if !maximized {
+        let position = position.to_logical::<f64>(scale);
+        let size = size.to_logical::<f64>(scale);
+        json["x"] = serde_json::json!(position.x);
+        json["y"] = serde_json::json!(position.y);
+        json["width"] = serde_json::json!(size.width);
+        json["height"] = serde_json::json!(size.height);
+    }
+    json["maximized"] = serde_json::json!(maximized);
+    let path = geometry_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let tmp = path.with_extension("json.tmp");
+    if std::fs::write(&tmp, format!("{}\n", serde_json::to_string_pretty(&json).unwrap_or_default())).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
+}
+
+/// Apply the saved rectangle when it still lands on a connected display; otherwise keep the
+/// builder's centred default. Size first, then position, both logical.
+fn apply_saved_geometry(window: &WebviewWindow) -> Option<(f64, f64)> {
+    let raw = std::fs::read_to_string(geometry_path()).ok()?;
+    let json = serde_json::from_str::<serde_json::Value>(&raw).ok()?;
+    let read = |key: &str| json.get(key).and_then(|value| value.as_f64());
+    let (x, y, width, height) = (read("x")?, read("y")?, read("width")?, read("height")?);
+    if !(width >= 720.0 && height >= 480.0) {
+        return None;
+    }
+    let mut on_screen = false;
+    if let Ok(monitors) = window.available_monitors() {
+        for monitor in &monitors {
+            let scale = monitor.scale_factor();
+            let origin = monitor.position().to_logical::<f64>(scale);
+            let extent = monitor.size().to_logical::<f64>(scale);
+            // At least a title bar's worth of the window must be visible on this display.
+            let hit = x + width > origin.x + 40.0
+                && x < origin.x + extent.width - 40.0
+                && y + 28.0 > origin.y
+                && y < origin.y + extent.height - 40.0;
+            if cfg!(debug_assertions) {
+                eprintln!("[geometry] monitor at ({}, {}) {}x{} scale {scale} — saved ({x}, {y}) {width}x{height} hits: {hit}", origin.x, origin.y, extent.width, extent.height);
+            }
+            on_screen |= hit;
+        }
+    }
+    let _ = window.set_size(tauri::LogicalSize::new(width, height));
+    if on_screen {
+        let _ = window.set_position(tauri::LogicalPosition::new(x, y));
+    } else {
+        let _ = window.center();
+    }
+    if json.get("maximized").and_then(|value| value.as_bool()).unwrap_or(false) {
+        let _ = window.maximize();
+    }
+    on_screen.then_some((x, y))
 }
 
 // ---- locations -----------------------------------------------------------------------------
