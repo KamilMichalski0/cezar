@@ -345,13 +345,27 @@ async function serveCommand(
   // holding the port, so follow the parent down: `kill(pid, 0)` only probes for existence.
   const supervisorPid = Number(process.env.CEZ_SUPERVISOR_PID);
   if (Number.isInteger(supervisorPid) && supervisorPid > 0) {
+    // Two independent signals, because either alone has a hole: `kill(pid, 0)` still succeeds
+    // for an unreaped zombie or a reused pid, and the shell exec's us so our parent IS the
+    // supervisor — when it dies we are re-parented to pid 1.
+    const initialPpid = process.ppid;
     setInterval(() => {
-      try {
-        process.kill(supervisorPid, 0);
-      } catch {
-        console.log('  supervisor is gone — shutting down');
-        shutdown();
+      let gone = process.ppid !== initialPpid || process.ppid === 1;
+      if (!gone) {
+        try {
+          process.kill(supervisorPid, 0);
+        } catch {
+          gone = true;
+        }
       }
+      if (!gone) return;
+      try {
+        process.stderr.write('  supervisor is gone — shutting down\n');
+        store.flush();
+      } catch {
+        // Nothing left to save that is worth staying alive for.
+      }
+      process.exit(0);
     }, 2_000).unref();
   }
 
