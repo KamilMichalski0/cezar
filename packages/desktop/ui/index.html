@@ -123,10 +123,20 @@
           pre.textContent = log || ''
           pre.classList.toggle('hidden', !log)
         },
+        // Streamed progress (an install or update running in the shell): keep the spinner,
+        // append the line, follow the tail.
+        log(line) {
+          const pre = document.getElementById('log')
+          pre.classList.remove('hidden')
+          pre.textContent += (pre.textContent ? '\n' : '') + line
+          pre.scrollTop = pre.scrollHeight
+        },
       }
       const params = new URLSearchParams(location.search)
       if (params.get('error')) {
         window.cezarSplash.fail(params.get('title') || 'cezar stopped', params.get('error'), params.get('log') || '')
+      } else if (params.get('title')) {
+        window.cezarSplash.set(params.get('title'), params.get('detail') || '')
       }
     </script>
   </body>

@@ -6,10 +6,15 @@
 //! that), waits for `/api/v1/health`, and points the webview at the cockpit. Everything the
 //! cockpit does — including updating cezar — happens in the sidecar: an update ends with the
 //! sidecar exiting `75` (`CEZ_SUPERVISED=1`), and the supervisor loop below relaunches it,
-//! which picks up the freshly activated version. So the desktop app never needs a release to
-//! ship a cezar update; only the shell itself would.
+//! which picks up the freshly activated version.
 //!
-//! No Tauri IPC is exposed to the cockpit (it is a remote origin); the splash page is driven
+//! The one thing the shell does on its own is the SUPERVISOR's job: put a cezar in place when
+//! there is none (first launch) and put the newest one in place on request (the app menu's
+//! "Update cezar to latest…"), so a downgrade into a version that predates the cockpit's own
+//! updater is never a dead end. That is `npm install --prefix` into the same layout the
+//! cockpit's updater uses — no cezar code needed, any version recoverable.
+//!
+//! No Tauri IPC is exposed to the cockpit beyond window dragging; the splash page is driven
 //! with `eval`.
 
 use std::collections::VecDeque;
@@ -17,14 +22,36 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
+/// Exit status the sidecar uses to say "relaunch me" after a self-update (EX_TEMPFAIL).
+const RESTART_EXIT_CODE: i32 = 75;
+const HEALTH_TIMEOUT: Duration = Duration::from_secs(60);
+const LOG_TAIL: usize = 60;
+/// The cockpit's conventional port, tried first so `http://localhost:4321` works in a browser
+/// beside the app whenever it can; a busy one falls through to the next few, then to any.
+const PREFERRED_PORTS: std::ops::Range<u16> = 4321..4331;
+const PACKAGE: &str = "@open-mercato/cezar";
+
+/// Everything the supervisor thread and the menu handler share.
+struct Shell {
+    child: Mutex<Option<Child>>,
+    port: AtomicU16,
+    /// Set by the menu's update flow before it kills the sidecar: the supervisor loop treats the
+    /// resulting exit as "relaunch" instead of "crashed".
+    restart_requested: AtomicBool,
+    updating: AtomicBool,
+    open_item: Mutex<Option<MenuItem<tauri::Wry>>>,
+}
+
 /// Runs at document start on EVERY page the window loads — the splash and, after navigation,
-/// the cockpit. The cockpit reads `data-cez-desktop` to add the title-bar band the overlay
-/// title bar needs (see `packages/web/src/components/app-shell.tsx`); a browser tab on the
+/// the cockpit. The cockpit reads `data-cez-desktop` to make room for the traffic lights in
+/// its sidebar header (see `packages/web/src/components/app-shell.tsx`); a browser tab on the
 /// same server never sees it.
 const INIT_SCRIPT: &str = r#"
   (function () {
@@ -51,44 +78,110 @@ fn build_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         .min_inner_size(720.0, 480.0)
         .center()
         .initialization_script(INIT_SCRIPT.replace("__PLATFORM__", platform_name()));
-    // macOS: no title text, traffic lights floating over the cockpit's own top band — the
-    // native bar reads as part of the app instead of a grey strip above it.
+    // macOS: no title text, and the traffic lights float INSIDE the cockpit's sidebar header
+    // (the brand row makes room for them) — no title bar strip at all, like Slack or Linear.
     #[cfg(target_os = "macos")]
     let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true);
+        .hidden_title(true)
+        .traffic_light_position(tauri::LogicalPosition::new(14.0, 21.0));
     builder.build()
 }
 
-/// Exit status the sidecar uses to say "relaunch me" after a self-update (EX_TEMPFAIL).
-const RESTART_EXIT_CODE: i32 = 75;
-const HEALTH_TIMEOUT: Duration = Duration::from_secs(60);
-const LOG_TAIL: usize = 60;
-
-type SharedChild = Arc<Mutex<Option<Child>>>;
+fn build_menu(app: &AppHandle, shell: &Shell) -> tauri::Result<()> {
+    let update_item = MenuItem::with_id(app, "update-cezar", "Update cezar to latest…", true, None::<&str>)?;
+    let open_item = MenuItem::with_id(app, "open-browser", "Open cockpit in browser", true, None::<&str>)?;
+    *shell.open_item.lock().unwrap() = Some(open_item.clone());
+    let app_menu = Submenu::with_items(
+        app,
+        "cezar",
+        true,
+        &[
+            &PredefinedMenuItem::about(app, None, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &update_item,
+            &open_item,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ],
+    )?;
+    // Without an Edit menu the webview has no Cmd+C / Cmd+V on macOS.
+    let edit_menu = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let window_menu = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+    app.set_menu(Menu::with_items(app, &[&app_menu, &edit_menu, &window_menu])?)?;
+    Ok(())
+}
 
 pub fn run() {
-    let child: SharedChild = Arc::new(Mutex::new(None));
-    let child_for_setup = child.clone();
-    let child_for_run = child.clone();
+    let shell = Arc::new(Shell {
+        child: Mutex::new(None),
+        port: AtomicU16::new(0),
+        restart_requested: AtomicBool::new(false),
+        updating: AtomicBool::new(false),
+        open_item: Mutex::new(None),
+    });
+    let shell_for_setup = shell.clone();
+    let shell_for_menu = shell.clone();
+    let shell_for_run = shell.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             let handle = app.handle().clone();
             build_main_window(&handle)?;
-            let child = child_for_setup.clone();
+            build_menu(&handle, &shell_for_setup)?;
+            let shell = shell_for_setup.clone();
             let supervisor_handle = handle.clone();
-            std::thread::spawn(move || supervise(supervisor_handle, child));
+            std::thread::spawn(move || supervise(supervisor_handle, shell));
             // The shell updates ITSELF rarely (spec 2026-09-25-desktop-distribution): check the
             // release manifest once per launch, in the background, and install silently — the
             // new shell takes over on the next launch. Never blocks startup; offline is a no-op.
             tauri::async_runtime::spawn(async move { check_shell_update(handle).await });
             Ok(())
         })
+        .on_menu_event(move |app, event| match event.id().as_ref() {
+            "update-cezar" => {
+                let app = app.clone();
+                let shell = shell_for_menu.clone();
+                std::thread::spawn(move || update_cezar(&app, &shell, "Updating cezar…"));
+            }
+            "open-browser" => {
+                let port = shell_for_menu.port.load(Ordering::SeqCst);
+                if port != 0 {
+                    open_url(&format!("http://localhost:{port}"));
+                }
+            }
+            _ => {}
+        })
         .on_window_event(|window, event| {
             // macOS convention: closing the window keeps the app (and the agents it is running)
-            // alive in the Dock; Cmd+Q quits. The default menu Tauri installs carries Quit.
+            // alive in the Dock; Cmd+Q quits.
             #[cfg(target_os = "macos")]
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
@@ -109,7 +202,7 @@ pub fn run() {
             }
             RunEvent::Exit => {
                 let _ = app;
-                if let Some(mut child) = child_for_run.lock().unwrap().take() {
+                if let Some(mut child) = shell_for_run.child.lock().unwrap().take() {
                     let _ = child.kill();
                     let _ = child.wait();
                 }
@@ -132,8 +225,9 @@ async fn check_shell_update(app: AppHandle) {
     let _ = update.download_and_install(|_, _| {}, || {}).await;
 }
 
-/// Spawn → wait for health → show cockpit → wait for exit → relaunch on 75, report otherwise.
-fn supervise(app: AppHandle, shared: SharedChild) {
+/// Spawn → wait for health → show cockpit → wait for exit → relaunch on 75 (or on a requested
+/// restart), report otherwise. A missing install is installed first.
+fn supervise(app: AppHandle, shell: Arc<Shell>) {
     let window = loop {
         if let Some(window) = app.get_webview_window("main") {
             break window;
@@ -145,18 +239,23 @@ fn supervise(app: AppHandle, shared: SharedChild) {
         let entry = match resolve_entry() {
             Some(entry) => entry,
             None => {
-                fail(
-                    &window,
-                    "cezar is not installed",
-                    "Install it once from a terminal, then reopen this app:",
-                    "npx cezar-cli install",
-                );
-                return;
+                // First launch on this machine: the supervisor puts a cezar in place itself.
+                if !update_cezar(&app, &shell, "Installing cezar…") {
+                    return;
+                }
+                match resolve_entry() {
+                    Some(entry) => entry,
+                    None => return,
+                }
             }
         };
-        let port = free_port();
+        let port = pick_port();
+        shell.port.store(port, Ordering::SeqCst);
+        if let Some(item) = shell.open_item.lock().unwrap().as_ref() {
+            let _ = item.set_text(format!("Open http://localhost:{port} in browser"));
+        }
         let cwd = pick_cwd();
-        splash(&window, "Starting cezar…", &format!("{}", entry.display()));
+        splash_reset(&window, "Starting cezar…", &entry.to_string_lossy());
 
         let log: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
         let mut child = match spawn_sidecar(&entry, port, &cwd, log.clone()) {
@@ -167,11 +266,9 @@ fn supervise(app: AppHandle, shared: SharedChild) {
             }
         };
         let pid = child.id();
-        *shared.lock().unwrap() = None;
 
         let url = format!("http://127.0.0.1:{port}");
-        let healthy = wait_for_health(port, &mut child, HEALTH_TIMEOUT);
-        if healthy {
+        if wait_for_health(port, &mut child, HEALTH_TIMEOUT) {
             if let Ok(parsed) = url::Url::parse(&url) {
                 let _ = window.navigate(parsed);
             }
@@ -182,9 +279,9 @@ fn supervise(app: AppHandle, shared: SharedChild) {
             return;
         }
 
-        *shared.lock().unwrap() = Some(child);
+        *shell.child.lock().unwrap() = Some(child);
         let status = loop {
-            let mut guard = shared.lock().unwrap();
+            let mut guard = shell.child.lock().unwrap();
             match guard.as_mut() {
                 Some(child) => match child.try_wait() {
                     Ok(Some(status)) => break Some(status),
@@ -196,11 +293,16 @@ fn supervise(app: AppHandle, shared: SharedChild) {
             drop(guard);
             std::thread::sleep(Duration::from_millis(250));
         };
-        *shared.lock().unwrap() = None;
+        *shell.child.lock().unwrap() = None;
 
+        let requested = shell.restart_requested.swap(false, Ordering::SeqCst);
         match status.and_then(|s| s.code()) {
             Some(RESTART_EXIT_CODE) => {
                 splash_reset(&window, "Restarting cezar…", "Switching to the newly activated version.");
+                continue;
+            }
+            _ if requested => {
+                splash_reset(&window, "Restarting cezar…", "Switching to the newly installed version.");
                 continue;
             }
             Some(code) => {
@@ -213,10 +315,110 @@ fn supervise(app: AppHandle, shared: SharedChild) {
     }
 }
 
+// ---- installing / updating cezar from the shell ------------------------------------------
+
+/// Install the channel's newest cezar into the managed layout and make it current — the same
+/// layout and manifest the cockpit's own updater writes, so the two never disagree. Streams
+/// npm's output to the splash. On success with a sidecar running, asks the supervisor loop to
+/// relaunch. Returns whether the install succeeded.
+fn update_cezar(app: &AppHandle, shell: &Shell, title: &str) -> bool {
+    if shell.updating.swap(true, Ordering::SeqCst) {
+        return false;
+    }
+    let Some(window) = app.get_webview_window("main") else {
+        shell.updating.store(false, Ordering::SeqCst);
+        return false;
+    };
+    let tag = release_tag();
+    let versions = cezar_home().join("versions");
+    splash_reset(&window, title, &format!("{PACKAGE}@{tag} → {}", versions.display()));
+
+    // POSIX sh: the same steps as packages/cezar/src/self-update/installer.ts, staging dir and
+    // all, written so they run against any node/npm on the user's login PATH.
+    let script = format!(
+        r#"set -e
+V={versions}
+mkdir -p "$V"
+S="$V/.staging-shell-$$"
+rm -rf "$S"; mkdir -p "$S"
+npm install --prefix "$S" --omit=dev --no-audit --no-fund --no-package-lock --loglevel=notice {package}@{tag}
+VER=$(node -p "require('$S/node_modules/{package}/package.json').version")
+test -f "$S/node_modules/{package}/dist/index.js"
+rm -rf "$V/$VER"
+mv "$S" "$V/$VER"
+printf '{{"version":"%s","source":"registry","installedAt":"%s"}}\n' "$VER" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$V/$VER/.cezar-install.json"
+ln -sfn "$VER" "$V/current"
+echo "installed $VER"
+"#,
+        versions = shell_quote(&versions.to_string_lossy()),
+        package = PACKAGE,
+        tag = tag,
+    );
+    let mut command = login_shell(&script);
+    command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    let ok = match command.spawn() {
+        Ok(mut child) => {
+            let mut lines: Vec<String> = Vec::new();
+            for reader in [
+                child.stdout.take().map(|out| Box::new(out) as Box<dyn Read + Send>),
+                child.stderr.take().map(|err| Box::new(err) as Box<dyn Read + Send>),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                // Sequential drain is fine: npm's chatter is small and stdout closes at the end.
+                for line in BufReader::new(reader).lines().map_while(Result::ok) {
+                    splash_log(&window, &line);
+                    lines.push(line);
+                }
+            }
+            match child.wait() {
+                Ok(status) if status.success() => true,
+                Ok(status) => {
+                    fail(&window, "cezar could not be installed", &format!("npm exited with {status}. Is Node 20+ on your PATH?"), &lines.join("\n"));
+                    false
+                }
+                Err(error) => {
+                    fail(&window, "cezar could not be installed", &error.to_string(), "");
+                    false
+                }
+            }
+        }
+        Err(error) => {
+            fail(&window, "cezar could not be installed", &format!("could not start the login shell: {error}"), "");
+            false
+        }
+    };
+    shell.updating.store(false, Ordering::SeqCst);
+    if ok {
+        // A running sidecar is the OLD version: ask the loop to relaunch, then stop it.
+        let mut guard = shell.child.lock().unwrap();
+        if let Some(child) = guard.as_mut() {
+            shell.restart_requested.store(true, Ordering::SeqCst);
+            let _ = child.kill();
+        }
+    }
+    ok
+}
+
+/// `updateChannel` from `~/.cezar/config.json` → the npm dist-tag; `latest` when unset.
+fn release_tag() -> &'static str {
+    let config = cezar_home().join("config.json");
+    let channel = std::fs::read_to_string(config)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .and_then(|json| json.get("updateChannel").and_then(|value| value.as_str()).map(str::to_owned));
+    match channel.as_deref() {
+        Some("nightly") => "nightly",
+        _ => "latest",
+    }
+}
+
 // ---- process -------------------------------------------------------------------------------
 
 fn spawn_sidecar(entry: &Path, port: u16, cwd: &Path, log: Arc<Mutex<VecDeque<String>>>) -> Result<Child, String> {
-    let mut command = login_shell_command(entry, port);
+    let script = format!("exec node {} serve --no-open --port {}", shell_quote(&entry.to_string_lossy()), port);
+    let mut command = login_shell(&script);
     command
         .current_dir(cwd)
         .env("CEZ_DESKTOP", "1")
@@ -249,27 +451,35 @@ fn spawn_sidecar(entry: &Path, port: u16, cwd: &Path, log: Arc<Mutex<VecDeque<St
     Ok(child)
 }
 
-/// `node <entry> serve --no-open --port <port>` through the user's login shell, so nvm/volta/
-/// homebrew PATH entries resolve exactly as in their terminal.
-fn login_shell_command(entry: &Path, port: u16) -> Command {
+/// A command through the user's LOGIN shell, so nvm/volta/homebrew PATH entries resolve exactly
+/// as in their terminal. `cmd /C` on Windows (PoC — untested).
+fn login_shell(script: &str) -> Command {
     #[cfg(windows)]
     {
         let mut command = Command::new("cmd");
-        command.args(["/C", "node", &entry.to_string_lossy(), "serve", "--no-open", "--port", &port.to_string()]);
+        command.args(["/C", script]);
         command
     }
     #[cfg(not(windows))]
     {
         let shell = std::env::var("SHELL").unwrap_or_else(|_| if cfg!(target_os = "macos") { "/bin/zsh".into() } else { "/bin/bash".into() });
-        let script = format!("exec node {} serve --no-open --port {}", shell_quote(&entry.to_string_lossy()), port);
         let mut command = Command::new(shell);
-        command.args(["-lc", &script]);
+        command.args(["-lc", script]);
         command
     }
 }
 
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn open_url(url: &str) {
+    #[cfg(target_os = "macos")]
+    let _ = Command::new("open").arg(url).spawn();
+    #[cfg(windows)]
+    let _ = Command::new("cmd").args(["/C", "start", "", url]).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let _ = Command::new("xdg-open").arg(url).spawn();
 }
 
 /// A one-shot HTTP GET to `/api/v1/health` without an HTTP client dependency.
@@ -283,7 +493,8 @@ fn health_ok(port: u16) -> bool {
     }
     let mut buffer = Vec::new();
     let _ = stream.read_to_end(&mut buffer);
-    String::from_utf8_lossy(&buffer).starts_with("HTTP/1.0 200") || String::from_utf8_lossy(&buffer).starts_with("HTTP/1.1 200")
+    let head = String::from_utf8_lossy(&buffer);
+    head.starts_with("HTTP/1.0 200") || head.starts_with("HTTP/1.1 200")
 }
 
 fn wait_for_health(port: u16, child: &mut Child, timeout: Duration) -> bool {
@@ -300,7 +511,13 @@ fn wait_for_health(port: u16, child: &mut Child, timeout: Duration) -> bool {
     false
 }
 
-fn free_port() -> u16 {
+/// 4321 first (the port every README names), the next few when it is busy, then anything free.
+fn pick_port() -> u16 {
+    for port in PREFERRED_PORTS {
+        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            return port;
+        }
+    }
     TcpListener::bind("127.0.0.1:0").and_then(|listener| listener.local_addr()).map(|addr| addr.port()).unwrap_or(4321)
 }
 
@@ -326,8 +543,9 @@ fn resolve_entry() -> Option<PathBuf> {
     managed.is_file().then_some(managed)
 }
 
-/// The boot folder: the most recently opened registered project, else the home directory
-/// (which cezar never registers as a project — the cockpit then shows the registry).
+/// The boot folder: `CEZ_DESKTOP_CWD`, else the most recently opened registered project, else
+/// the home directory (which cezar never registers as a project — the cockpit then shows the
+/// registry).
 fn pick_cwd() -> PathBuf {
     if let Some(explicit) = std::env::var_os("CEZ_DESKTOP_CWD").map(PathBuf::from) {
         if explicit.is_dir() {
@@ -357,14 +575,16 @@ fn pick_cwd() -> PathBuf {
 
 // ---- splash page ---------------------------------------------------------------------------
 
-fn splash(window: &WebviewWindow, title: &str, detail: &str) {
-    let _ = window.eval(&format!("window.cezarSplash && window.cezarSplash.set({}, {})", js_string(title), js_string(detail)));
+fn splash_log(window: &WebviewWindow, line: &str) {
+    let _ = window.eval(&format!("window.cezarSplash && window.cezarSplash.log({})", js_string(line)));
 }
 
 /// Back to the splash from the cockpit (a different origin), then set the message.
 fn splash_reset(window: &WebviewWindow, title: &str, detail: &str) {
     if let Ok(url) = url::Url::parse(&format!("{}?title={}&detail={}", app_origin(), urlencode(title), urlencode(detail))) {
         let _ = window.navigate(url);
+        // Navigation is asynchronous; give the page a beat before the first `eval` lands.
+        std::thread::sleep(Duration::from_millis(400));
     }
 }
 

@@ -34,6 +34,7 @@ import { printSkillsBanner } from './skills-banner.ts';
 import { SelfUpdateService } from './self-update/service.ts';
 import { isSupervised, restartProcess } from './self-update/restart.ts';
 import { runSelfUpdateCommand } from './self-update/cli.ts';
+import { writeLaunchers } from './self-update/launcher.ts';
 import { initWorkspace } from './workspace/boot.ts';
 import { loadWorkspaceConfig } from './workspace/config.ts';
 import { runProjectsCommand } from './workspace/projects-cli.ts';
@@ -343,6 +344,16 @@ async function serveCommand(
   // A supervisor that names itself (the desktop shell sets CEZ_SUPERVISOR_PID) may die without
   // a chance to kill us — a force-quit, a crash. Nobody would find a headless cockpit still
   // holding the port, so follow the parent down: `kill(pid, 0)` only probes for existence.
+  // Under the desktop shell a managed install may exist without launchers (the shell installs
+  // cezar itself on first launch, spec 2026-09-25-desktop-distribution): write them so
+  // `cezar` in a terminal works too. Idempotent; never touches the shell profile.
+  if (process.env.CEZ_DESKTOP === '1' && selfUpdate.installKind === 'managed') {
+    try {
+      writeLaunchers();
+    } catch {
+      // A read-only home is not a reason to refuse to serve.
+    }
+  }
   const supervisorPid = Number(process.env.CEZ_SUPERVISOR_PID);
   if (Number.isInteger(supervisorPid) && supervisorPid > 0) {
     // Two independent signals, because either alone has a hole: `kill(pid, 0)` still succeeds
