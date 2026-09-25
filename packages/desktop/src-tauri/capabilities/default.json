@@ -15,7 +15,6 @@
     "core:default",
     "core:window:allow-start-dragging",
     "core:window:allow-internal-toggle-maximize",
-    "allow-update-cezar-command",
-    "allow-request-update"
+    "allow-update-cezar-command"
   ]
 }

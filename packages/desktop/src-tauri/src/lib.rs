@@ -1064,7 +1064,7 @@ fn probe_ipc(window: &WebviewWindow) {
         let own_strip = own_strip_probe.is_ok() && window.is_maximized().unwrap_or(false);
         let _ = window.unmaximize();
         std::thread::sleep(Duration::from_secs(6));
-        let _ = window.eval("document.querySelector('[data-cez-legacy-update]') && window.__TAURI_INTERNALS__.invoke('plugin:window|internal_toggle_maximize')");
+        let _ = window.eval("document.querySelector('[data-cez-update-pill]') && window.__TAURI_INTERNALS__.invoke('plugin:window|internal_toggle_maximize')");
         std::thread::sleep(Duration::from_millis(1500));
         let legacy_update = window.is_maximized().unwrap_or(false);
         let _ = window.unmaximize();
