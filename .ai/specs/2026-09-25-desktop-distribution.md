@@ -129,6 +129,35 @@ official Node tarball for the platform into `~/.cezar/node/<version>/` (verified
 are unaffected — `claude`'s native installer bundles its own runtime and `codex` is a binary —
 so this closes the last gap between "download the app" and "it works".
 
+## Being an application — what makes it show up and launch like one
+
+The shell is a real native app the moment its release bundle is INSTALLED where the OS looks
+for apps; nothing in cezar has to change per platform. `npx tauri build` (release, in
+`packages/desktop`) produces the bundles; `desktop-release.yml` does the same in CI.
+
+| Platform | Bundle | Installed how | Then it is… |
+| --- | --- | --- | --- |
+| macOS | `cezar.app` (+ `.dmg` to ship it) | drag into `/Applications` (the dmg's only step), or `brew install --cask` | in Launchpad, Spotlight, the Dock (right-click → Options → Keep in Dock), Cmd+Tab; icon, menu bar, About box from the bundle |
+| Windows | NSIS `cezar-…-setup.exe` (`.msi` optional) | run the installer, or `winget install` | Start menu entry, desktop shortcut, Apps & features (uninstall), taskbar pinning; needs WebView2, preinstalled on Windows 10/11 |
+| Linux | `.deb` (+ `.AppImage` portable) | `apt install ./cezar….deb` — installs `/usr/bin/cezar-desktop` and a `.desktop` entry | in the app launcher/menu with icon; the AppImage runs from anywhere but only appears in menus after `--appimage-integrate` or a Flatpak (later) |
+
+Launching from any of those is a plain double-click: the shell needs no terminal, no
+environment, no PATH — it resolves everything itself (login shell for `node` and the agent
+CLIs, `~/.cezar` for the managed cezar, first-launch install when none is there).
+
+Worth adding once real users have it:
+
+- **Open at login** (`tauri-plugin-autostart`, a menu toggle) so the cockpit is up with the
+  machine and tasks keep running under the Dock icon.
+- **Single instance** (`tauri-plugin-single-instance`): a second double-click focuses the
+  running window instead of starting a second shell and a second sidecar.
+- **Deep links** (`cezar://task/<id>`) so a notification or a browser link opens the task in
+  the app.
+
+A locally built bundle (no Developer ID) opens fine on the machine that built it — it carries no
+quarantine flag. The same bundle DOWNLOADED by someone else is what Gatekeeper refuses; that is
+the signing checklist above, not a packaging gap.
+
 ## Downstream pointers (in the order to add them)
 
 1. **Landing page "Download"** — a static page (Cloudflare/GitHub Pages) with OS detection and
