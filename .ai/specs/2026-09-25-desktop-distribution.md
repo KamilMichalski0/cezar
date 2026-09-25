@@ -93,13 +93,25 @@ Any shell version must run any cezar version, so these are frozen and listed in
 exit status **75** = "relaunch me"; `GET /api/v1/health` as the readiness probe. Changing any
 of them is the one case where the shell must ship BEFORE the cezar version that needs it.
 
+## What the shell does on its own (supervisor duties)
+
+- **First launch** with no managed install: installs the channel's newest cezar
+  (`npm install --prefix` into `~/.cezar/versions/<v>`, manifest, `current` link — the same
+  layout the cockpit's updater writes) with progress on the splash, then starts it. Node 20+
+  is the one prerequisite; the failure page says so.
+- **App menu → "Update cezar to latest…"**: the same install, then a relaunch. This is what
+  makes a downgrade into a version that predates the cockpit's updater recoverable from the
+  GUI — the shell never depends on the sidecar being able to update itself.
+- **Port**: 4321 first (so `http://localhost:4321` works in a browser beside the app), the
+  next few when busy, then any free port; the actual URL is on the app menu's
+  "Open … in browser" item.
+- The sidecar writes the `~/.cezar/bin` launchers on boot when they are missing, so a
+  machine that only ever installed the app still gets `cezar` in a terminal (PATH hook is
+  left to `cezar install`).
+
 ## Open items
 
-- **First-launch install.** The shell expects `cezar install` to have run; a fresh machine
-  gets the "not installed" splash. The shell should run the managed install itself (spawn
-  `npx cezar-cli install` through the login shell with a progress screen) — that is what turns
-  a Download button into a one-click install. Node stays a prerequisite; the splash must say
-  so with a link when `node` is missing.
 - Windows signing, Flathub, universal macOS binary (two dmgs today).
 - A `cezar desktop` version chip somewhere in the cockpit (the sidecar knows `CEZ_DESKTOP`,
   the shell version could ride along in an env var) so a bug report names both versions.
+- Windows/Linux title bar: native today; the macOS overlay treatment needs a custom bar there.
