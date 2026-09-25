@@ -117,7 +117,7 @@ fn build_main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 
 fn build_menu(app: &AppHandle, shell: &Shell) -> tauri::Result<()> {
     let update_item = MenuItem::with_id(app, "update-cezar", "Update cezar to latest…", true, None::<&str>)?;
-    let open_item = MenuItem::with_id(app, "open-browser", "Open cockpit in browser", true, None::<&str>)?;
+    let open_item = MenuItem::with_id(app, "open-browser", "Open view in browser", true, Some("CmdOrCtrl+Shift+O"))?;
     *shell.open_item.lock().unwrap() = Some(open_item.clone());
     let app_menu = Submenu::with_items(
         app,
@@ -223,9 +223,19 @@ pub fn run() {
                 std::thread::spawn(move || update_cezar(&app, &shell, "Updating cezar…"));
             }
             "open-browser" => {
+                // The page the window is showing right now — route and all — so the browser tab
+                // lands on the same task, not the cockpit's front door. The splash (a
+                // `tauri://` page) falls back to the cockpit root on the live port.
+                let current = app
+                    .get_webview_window("main")
+                    .and_then(|window| window.url().ok())
+                    .filter(|url| url.scheme() == "http")
+                    .map(|url| url.to_string().replacen("127.0.0.1", "localhost", 1));
                 let port = shell_for_menu.port.load(Ordering::SeqCst);
-                if port != 0 {
-                    open_url(&format!("http://localhost:{port}"));
+                match current {
+                    Some(url) => open_url(&url),
+                    None if port != 0 => open_url(&format!("http://localhost:{port}")),
+                    None => {}
                 }
             }
             _ => {}
@@ -323,7 +333,7 @@ fn supervise(app: AppHandle, shell: Arc<Shell>) {
         let port = pick_port();
         shell.port.store(port, Ordering::SeqCst);
         if let Some(item) = shell.open_item.lock().unwrap().as_ref() {
-            let _ = item.set_text(format!("Open http://localhost:{port} in browser"));
+            let _ = item.set_enabled(true);
         }
         let cwd = pick_cwd();
         splash_reset(&window, "Starting cezar…", &entry.to_string_lossy());
