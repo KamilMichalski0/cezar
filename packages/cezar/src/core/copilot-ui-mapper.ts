@@ -36,7 +36,8 @@ export const COPILOT_AUTH_HINT =
 
 /** The run-time line for a rejected credential. "authentication failed" is what
  *  `isRuntimeProviderAuthFailure` keys on, so the server raises `provider-auth-required`. */
-export const COPILOT_AUTH_FAILURE_MESSAGE = `Copilot CLI authentication failed — ${COPILOT_AUTH_HINT}`;
+export const COPILOT_AUTH_FAILURE_MESSAGE =
+  'Copilot CLI authentication failed — run `copilot login`, or set COPILOT_GITHUB_TOKEN (GH_TOKEN and GITHUB_TOKEN are read too, in that order).';
 
 /**
  * Copilot answers an unauthenticated `session/new` with JSON-RPC `-32000 "Authentication
