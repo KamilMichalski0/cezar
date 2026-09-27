@@ -96,4 +96,9 @@ Full `validation.commands` gate.
 
 ### Phase 3: Validation
 
-- [ ] 3.1 Full validation gate
+- [x] 3.1 Full validation gate — typecheck / npm test / test:unit / build / test:package all green
+
+Two `npm test` files (`workflows/system-prompt`, `workflows/agent-profile-wiring`) fail under
+the cezar task environment — the runner exports `CEZ_TODOS_FILE`, and one of those tests asserts
+the composed system prompt does NOT contain that string. Both pass with the `CEZ_*` variables
+unset; neither goes near `packages/web`.
