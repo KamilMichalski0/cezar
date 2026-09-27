@@ -86,8 +86,8 @@ Full `validation.commands` gate.
 
 ### Phase 1: Restore the ring on every bare native select
 
-- [ ] 1.1 Dashboard selects (costs ×2, overview, trends)
-- [ ] 1.2 GitHub, tracker and add-account selects
+- [x] 1.1 Dashboard selects (costs ×2, overview, trends) — adbcda77
+- [x] 1.2 GitHub, tracker and add-account selects — cf4ef2ee
 
 ### Phase 2: Pin it with a guardian rule
 
