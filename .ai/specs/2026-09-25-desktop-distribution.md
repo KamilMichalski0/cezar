@@ -143,8 +143,14 @@ margin gets a white plate in the Dock) — filled with `--bg` when given, the ma
 it has one, else the brand tile's black — renders it and runs `tauri icon`. It bumps nothing: bump
 the shell version, tag `desktop-v…`, and every installed app shows the new icon after its next
 launch (the shell auto-update). Nobody is stuck on an old icon: it is a bundle resource, not
-something installed once. macOS may keep the previous icon in its cache until the app is
-relaunched or `killall Dock`.
+something installed once.
+
+The icon MUST ship with a version bump. macOS caches app icons keyed by bundle identifier and
+version, so a bundle replaced in place at the same version keeps showing the old picture in the
+Dock, Launchpad and Spotlight however new the `.icns` inside it is (seen on 2026-09-27: new
+icon in the bundle, old icon in the Dock). A release always bumps, so users never hit it; a
+maintainer iterating locally at one version clears it with
+`lsregister -f /Applications/Cezar.app && killall Dock`.
 
 ## Being an application — what makes it show up and launch like one
 
