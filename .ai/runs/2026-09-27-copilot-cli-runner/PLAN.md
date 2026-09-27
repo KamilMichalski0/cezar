@@ -35,8 +35,8 @@
 | 5 | 5.4 | Pin `runnerDiscoversModels('copilot') === false` and the free-text picker | inline | done | 4e370d54 |
 | 5 | 5.5 | Update the e2e runner mirrors and add the dry-run smoke | inline | done | f7cff6ae |
 | 6 | 6.1 | Add `copilot` to `ui-parity.test.ts` `BACKENDS` | inline | done | 78a13a44 |
-| 6 | 6.2 | Document the runner in `AGENT_PROTOCOL.md` and `BACKWARD_COMPATIBILITY.md` | inline | done | DOCSSHA |
-| 6 | 6.3 | Add the CHANGELOG entry and the README backends row | inline | done | DOCSSHA |
+| 6 | 6.2 | Document the runner in `AGENT_PROTOCOL.md` and `BACKWARD_COMPATIBILITY.md` | inline | done | 2b3ce11a |
+| 6 | 6.3 | Add the CHANGELOG entry and the README backends row | inline | done | 2b3ce11a |
 
 ## Goal
 

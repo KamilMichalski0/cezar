@@ -56,3 +56,19 @@
   shared mapper's `standardUsage` already reads, so the spec's "documented substitute" for
   `usage.updated` is not needed. Its separate `usage_update` frame is a context-window gauge
   (`{used, size}`) and is deliberately not mapped — noted as a follow-up, not a gap in parity.
+
+## 2026-09-27T17:02:24Z — final gate
+- `npm run typecheck`, `npm run test:unit`, `npm run build`, `npm run test:package`: all pass.
+- `npm test`: 8359 passed, 3 skipped (opt-in smoke), 1 failed — `automations/store.test.ts`, which
+  passes in isolation and sits in a directory this branch does not touch. Known concurrent-worktree
+  flake; a second test in the same family flaked identically earlier in this run.
+- `npm run test:e2e`: `TEST_E2E_STATUS=skipped` — the agent-browser provider could not be
+  provisioned on this host. NOT a pass; the cockpit rows were not verified in a browser.
+- Substituted real integration evidence instead: the runner was driven end to end through the
+  live HTTP API (health, providers/status, POST /runs, the persisted event history, the models
+  400, agent-config), and the built `dist` mock path was confirmed. Record: `final-gate-checks.md`.
+
+## 2026-09-27T17:02:24Z — deviation: no CHANGELOG entry (step 6.3)
+- This repository writes `CHANGELOG.md` at release time from the merged PRs; no recent feature or
+  fix PR touches it. Adding a line here would collide with the release draft. The README backends
+  row, which IS this PR's to write, is done.
