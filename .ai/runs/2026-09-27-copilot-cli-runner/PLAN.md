@@ -14,26 +14,26 @@
 | 1 | 1.1 | Port the shared ACP client from PR #1049 | inline | done | e70442da |
 | 1 | 1.2 | Port the shared ACP→v2 mapper from PR #1049 | inline | done | 95769bb6 |
 | 2 | 2.1 | Record the verified Copilot ACP surface and frame vocabulary | inline | done | PENDING21 |
-| 2 | 2.2 | Add the `copilot` mapper dialect | inline | todo | — |
+| 2 | 2.2 | Add the `copilot` mapper dialect | inline | done | DIALECTSHA |
 | 2 | 2.3 | Add golden `__fixtures__/copilot/` transcripts for every parity row | inline | todo | — |
 | 2 | 2.4 | Add `copilot-ui-mapper.test.ts` replay and robustness tests | inline | todo | — |
 | 3 | 3.1 | Add `copilot-acp-runner.ts` (session lifecycle over `copilot --acp`) | inline | todo | — |
 | 3 | 3.2 | Add `scripts/mock-copilot-acp.mjs` and wire `CEZ_DRY_RUN` | inline | todo | — |
 | 3 | 3.3 | Add runner tests: follow-up, cancel, resume, permission auto-answer, teardown | inline | todo | — |
 | 3 | 3.4 | Add the opt-in real-CLI smoke test, skipped without Copilot entitlement | inline | todo | — |
-| 4 | 4.1 | Widen the runner union: `RUNNER_IDS`, `UiBackend` ×2, contract schemas, factory | inline | done | UNIONSHA |
-| 4 | 4.2 | Add `probeCopilot()` and `CEZ_COPILOT_BIN` (+ `.env.example`, `docs/reference.md`) | inline | done | UNIONSHA |
-| 4 | 4.3 | Add the provider-auth descriptor, action gate and server-install step | inline | done | UNIONSHA |
-| 4 | 4.4 | Add the credential allowlist and agent-profile entries | inline | done | UNIONSHA |
-| 4 | 4.5 | Add the model seam: identity map, presets, model-settings strategy, catalog | inline | done | UNIONSHA |
+| 4 | 4.1 | Widen the runner union: `RUNNER_IDS`, `UiBackend` ×2, contract schemas, factory | inline | done | f7cff6ae |
+| 4 | 4.2 | Add `probeCopilot()` and `CEZ_COPILOT_BIN` (+ `.env.example`, `docs/reference.md`) | inline | done | f7cff6ae |
+| 4 | 4.3 | Add the provider-auth descriptor, action gate and server-install step | inline | done | f7cff6ae |
+| 4 | 4.4 | Add the credential allowlist and agent-profile entries | inline | done | f7cff6ae |
+| 4 | 4.5 | Add the model seam: identity map, presets, model-settings strategy, catalog | inline | done | f7cff6ae |
 | 4 | 4.6 | Add the `agent-config/catalog.ts` config-file entries | inline | todo | — |
-| 4 | 4.7 | Widen the per-runner zod records across contract, config and server bodies | inline | done | UNIONSHA |
-| 4 | 4.8 | Add `resumeCommand()` and open-in-app support | inline | done | UNIONSHA |
-| 5 | 5.1 | Cockpit: provider status, auth alert, tools menu, open-in menu | inline | done | UNIONSHA |
+| 4 | 4.7 | Widen the per-runner zod records across contract, config and server bodies | inline | done | f7cff6ae |
+| 4 | 4.8 | Add `resumeCommand()` and open-in-app support | inline | done | f7cff6ae |
+| 5 | 5.1 | Cockpit: provider status, auth alert, tools menu, open-in menu | inline | done | f7cff6ae |
 | 5 | 5.2 | Cockpit: Settings → Agents descriptor, accounts and provider settings rows | inline | todo | — |
-| 5 | 5.3 | Cockpit: composer, thread and automations runner mirrors | inline | done | UNIONSHA |
+| 5 | 5.3 | Cockpit: composer, thread and automations runner mirrors | inline | done | f7cff6ae |
 | 5 | 5.4 | Pin `runnerDiscoversModels('copilot') === false` and the free-text picker | inline | todo | — |
-| 5 | 5.5 | Update the e2e runner mirrors and add the dry-run smoke | inline | done | UNIONSHA |
+| 5 | 5.5 | Update the e2e runner mirrors and add the dry-run smoke | inline | done | f7cff6ae |
 | 6 | 6.1 | Add `copilot` to `ui-parity.test.ts` `BACKENDS` | inline | todo | — |
 | 6 | 6.2 | Document the runner in `AGENT_PROTOCOL.md` and `BACKWARD_COMPATIBILITY.md` | inline | todo | — |
 | 6 | 6.3 | Add the CHANGELOG entry and the README backends row | inline | todo | — |
