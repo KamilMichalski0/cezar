@@ -18,6 +18,12 @@ export function createRunner(backend: AgentBackend | RunnerId | undefined): Agen
       return new OpencodeServerRunner();
     case 'pi':
       return new PiRunner();
+    case 'copilot':
+      // Replaced by `new CopilotAcpRunner()` when the runner class lands (#582 Step 3.1). Until
+      // then this case exists so a `copilot` run FAILS instead of falling through to the `default`
+      // and silently running Claude under Copilot's name — the landmine §9 of AGENT_PROTOCOL.md
+      // and the #582 dossier both call out.
+      throw new Error('The copilot runner is not wired up yet.');
     case 'claude':
     case 'claude-cli':
     default:

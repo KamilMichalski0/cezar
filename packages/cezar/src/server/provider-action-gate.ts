@@ -12,6 +12,7 @@ const LABEL: Record<ProviderId, string> = {
   codex: 'Codex',
   opencode: 'OpenCode',
   pi: 'pi',
+  copilot: 'GitHub Copilot CLI',
 };
 
 export function providersRequiredByWorkflow(

@@ -15,11 +15,14 @@ import { Switch } from '@/components/ui/switch'
 import { toast } from '@/components/ui/toaster'
 import { providerStatusFor } from '@/lib/provider-status'
 
-const PROVIDERS = [
+/** The provider cards this pane renders, in order. Exported so tests count them from the
+ *  source of truth rather than from a literal that a new runner silently invalidates. */
+export const PROVIDERS = [
   { id: 'claude', label: 'Claude Code', login: 'claude auth login' },
   { id: 'codex', label: 'Codex', login: 'codex login' },
   { id: 'opencode', label: 'OpenCode', login: 'opencode auth login' },
   { id: 'pi', label: 'pi', login: 'pi /login' },
+  { id: 'copilot', label: 'GitHub Copilot CLI', login: 'copilot login' },
 ] as const
 
 const providerWriteState = <T,>(value: T): Record<ProviderId, T> => ({
@@ -27,6 +30,7 @@ const providerWriteState = <T,>(value: T): Record<ProviderId, T> => ({
   codex: value,
   opencode: value,
   pi: value,
+  copilot: value,
 })
 
 const STATUS_PRESENTATION = {

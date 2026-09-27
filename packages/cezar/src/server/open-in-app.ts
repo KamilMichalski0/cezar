@@ -136,6 +136,7 @@ const AGENT_CLIS: Array<{ runner: RunnerId; label: string; icon: string; bin: st
   { runner: 'codex', label: 'Codex CLI', icon: 'codex', bin: 'codex', envBin: () => process.env.CEZ_CODEX_BIN },
   { runner: 'opencode', label: 'OpenCode', icon: 'opencode', bin: 'opencode', envBin: () => process.env.CEZ_OPENCODE_BIN },
   { runner: 'pi', label: 'pi CLI', icon: 'pi', bin: 'pi', envBin: () => process.env.CEZ_PI_BIN },
+  { runner: 'copilot', label: 'Copilot CLI', icon: 'copilot', bin: 'copilot', envBin: () => process.env.CEZ_COPILOT_BIN },
 ];
 
 /**

@@ -21,19 +21,19 @@
 | 3 | 3.2 | Add `scripts/mock-copilot-acp.mjs` and wire `CEZ_DRY_RUN` | inline | todo | — |
 | 3 | 3.3 | Add runner tests: follow-up, cancel, resume, permission auto-answer, teardown | inline | todo | — |
 | 3 | 3.4 | Add the opt-in real-CLI smoke test, skipped without Copilot entitlement | inline | todo | — |
-| 4 | 4.1 | Widen the runner union: `RUNNER_IDS`, `UiBackend` ×2, contract schemas, factory | inline | todo | — |
-| 4 | 4.2 | Add `probeCopilot()` and `CEZ_COPILOT_BIN` (+ `.env.example`, `docs/reference.md`) | inline | todo | — |
-| 4 | 4.3 | Add the provider-auth descriptor, action gate and server-install step | inline | todo | — |
-| 4 | 4.4 | Add the credential allowlist and agent-profile entries | inline | todo | — |
-| 4 | 4.5 | Add the model seam: identity map, presets, model-settings strategy, catalog | inline | todo | — |
+| 4 | 4.1 | Widen the runner union: `RUNNER_IDS`, `UiBackend` ×2, contract schemas, factory | inline | done | UNIONSHA |
+| 4 | 4.2 | Add `probeCopilot()` and `CEZ_COPILOT_BIN` (+ `.env.example`, `docs/reference.md`) | inline | done | UNIONSHA |
+| 4 | 4.3 | Add the provider-auth descriptor, action gate and server-install step | inline | done | UNIONSHA |
+| 4 | 4.4 | Add the credential allowlist and agent-profile entries | inline | done | UNIONSHA |
+| 4 | 4.5 | Add the model seam: identity map, presets, model-settings strategy, catalog | inline | done | UNIONSHA |
 | 4 | 4.6 | Add the `agent-config/catalog.ts` config-file entries | inline | todo | — |
-| 4 | 4.7 | Widen the per-runner zod records across contract, config and server bodies | inline | todo | — |
-| 4 | 4.8 | Add `resumeCommand()` and open-in-app support | inline | todo | — |
-| 5 | 5.1 | Cockpit: provider status, auth alert, tools menu, open-in menu | inline | todo | — |
+| 4 | 4.7 | Widen the per-runner zod records across contract, config and server bodies | inline | done | UNIONSHA |
+| 4 | 4.8 | Add `resumeCommand()` and open-in-app support | inline | done | UNIONSHA |
+| 5 | 5.1 | Cockpit: provider status, auth alert, tools menu, open-in menu | inline | done | UNIONSHA |
 | 5 | 5.2 | Cockpit: Settings → Agents descriptor, accounts and provider settings rows | inline | todo | — |
-| 5 | 5.3 | Cockpit: composer, thread and automations runner mirrors | inline | todo | — |
+| 5 | 5.3 | Cockpit: composer, thread and automations runner mirrors | inline | done | UNIONSHA |
 | 5 | 5.4 | Pin `runnerDiscoversModels('copilot') === false` and the free-text picker | inline | todo | — |
-| 5 | 5.5 | Update the e2e runner mirrors and add the dry-run smoke | inline | todo | — |
+| 5 | 5.5 | Update the e2e runner mirrors and add the dry-run smoke | inline | done | UNIONSHA |
 | 6 | 6.1 | Add `copilot` to `ui-parity.test.ts` `BACKENDS` | inline | todo | — |
 | 6 | 6.2 | Document the runner in `AGENT_PROTOCOL.md` and `BACKWARD_COMPATIBILITY.md` | inline | todo | — |
 | 6 | 6.3 | Add the CHANGELOG entry and the README backends row | inline | todo | — |
@@ -224,6 +224,25 @@ offers free text plus `KNOWN_PRESETS_BY_RUNNER.copilot` with no `/models` reques
 **6.2** `AGENT_PROTOCOL.md` §4 gains an ACP column and §9 the `copilot` note;
 `BACKWARD_COMPATIBILITY.md` records the additive widening of §2, §3 and §7.
 **6.3** `CHANGELOG.md` entry and the README backends row.
+
+## Deviation from 1:1 Step↔commit — the union widening
+
+Steps 4.1–4.5, 4.7, 4.8, 5.1, 5.3 and 5.5 landed in **one** commit rather than ten. Widening
+`RUNNER_IDS` is not decomposable: `Record<RunnerId, …>` / `Record<ProviderId, …>` tables
+(`BACKEND_MODEL_MAP`, `KNOWN_PRESETS_BY_RUNNER`, `BACKEND_ALLOW_PREFIXES`, `PROFILE_ENV_VAR`,
+the model-settings registry, the cockpit's label and preset maps) are compile errors the moment
+the tuple grows, and the contract-parity guard is a compile error until `backend-detect.ts` and
+`contract/src/health.ts` agree. Splitting them would have meant a chain of commits that do not
+typecheck, which is worse for bisecting than one commit that does. The Steps left standing are
+the ones the type system does NOT force: the config catalog (4.6), the Settings → Agents
+descriptor (5.2) and the model-discovery pin (5.4).
+
+Three fixes were folded in because the widening would otherwise have EXTENDED a defect:
+`createRunner` now refuses `copilot` instead of falling through to Claude;
+`runner-model-catalog`'s `unavailableReason` became a label table, so `copilot` (and `pi`, which
+was already wrong) no longer reports an OpenCode outage; and the provider-probe counts in three
+test files are derived from `PROVIDER_IDS` instead of the literal `4`, so runner #6 does not
+repeat this churn.
 
 ## Execution note
 

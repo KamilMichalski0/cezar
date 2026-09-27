@@ -93,6 +93,7 @@ const PROVIDER_LABEL: Record<ProviderId, string> = {
   codex: 'Codex',
   opencode: 'OpenCode',
   pi: 'pi',
+  copilot: 'GitHub Copilot CLI',
 }
 
 /** The vendor's own install/login instruction, shown when the CLI is not on this machine. */
@@ -101,6 +102,7 @@ const PROVIDER_INSTALL: Record<ProviderId, string> = {
   codex: 'npm i -g @openai/codex',
   opencode: 'https://opencode.ai',
   pi: 'https://github.com/badlogic/pi-mono',
+  copilot: 'npm i -g @github/copilot',
 }
 
 /** Same vocabulary the Providers card uses — one wording for "is this logged in?". */

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  PROVIDER_IDS,
   ProviderAuthService,
   type ProviderConnectionState,
   type ProviderId,
@@ -24,6 +25,9 @@ vi.mock('../core/claude-bin.ts', async (importOriginal) => ({
   resolveClaudeBin: () => process.env.CEZ_CLAUDE_BIN ?? 'claude',
 }));
 
+/** One status command per provider — the size of a full probe round. */
+const PROBE_ROUND = PROVIDER_IDS.length;
+
 const CONNECTED_OUTPUT: Record<ProviderId, string> = {
   claude: '{"loggedIn":true}',
   codex: 'Logged in using ChatGPT',
@@ -33,6 +37,9 @@ const CONNECTED_OUTPUT: Record<ProviderId, string> = {
     '└  1 credential',
   ].join('\n'),
   pi: 'provider  model  context  max-out  thinking  images\nanthropic  claude  200K  64K  yes  yes',
+  // Copilot's probe drives its ACP server, so its "connected" evidence is the `session/new`
+  // answer (`.ai/runs/2026-09-27-copilot-cli-runner/copilot-acp-notes.md`).
+  copilot: '{"jsonrpc":"2.0","id":1,"result":{"sessionId":"3f1b6f2e-0000-4000-8000-1f2e3d4c5b6a"}}',
 };
 
 const DISCONNECTED_OUTPUT: Record<ProviderId, string> = {
@@ -43,10 +50,11 @@ const DISCONNECTED_OUTPUT: Record<ProviderId, string> = {
     '└  0 credentials',
   ].join('\n'),
   pi: 'No models available. Use /login to authenticate.',
+  copilot: '{"jsonrpc":"2.0","id":1,"error":{"code":-32000,"message":"Authentication required"}}',
 };
 
 const providerForExecutable = (executable: string): ProviderId => {
-  if (executable === 'claude' || executable === 'codex' || executable === 'opencode' || executable === 'pi') return executable;
+  if (executable === 'claude' || executable === 'codex' || executable === 'opencode' || executable === 'pi' || executable === 'copilot') return executable;
   throw new Error(`unexpected executable: ${executable}`);
 };
 
@@ -173,6 +181,7 @@ describe('workspace provider API', () => {
           enabled: true,
         },
         { provider: 'pi', status: 'connected', enabled: true },
+        { provider: 'copilot', status: 'connected', enabled: true },
       ],
     });
   });
@@ -180,7 +189,7 @@ describe('workspace provider API', () => {
   it('GET /api/v1/providers/status skips probes and provider preferences under the explicit model lock', async () => {
     process.env.CEZ_AGENT_MODELS_LOCKED = '1';
     const runCommand = vi.fn<RunProviderCommand>();
-    const workspaceConfig = memoryWorkspaceConfig(['claude', 'codex', 'opencode', 'pi']);
+    const workspaceConfig = memoryWorkspaceConfig(['claude', 'codex', 'opencode', 'pi', 'copilot']);
     const response = await apiRequest(app({
       providerAuth: service({}, runCommand),
       workspaceConfig,
@@ -193,6 +202,7 @@ describe('workspace provider API', () => {
         { provider: 'codex', status: 'connected', enabled: true },
         { provider: 'opencode', status: 'connected', enabled: true },
         { provider: 'pi', status: 'connected', enabled: true },
+        { provider: 'copilot', status: 'connected', enabled: true },
       ],
     });
     expect(runCommand).not.toHaveBeenCalled();
@@ -295,7 +305,7 @@ describe('workspace provider API', () => {
     await apiRequest(server, '/api/v1/providers/status');
     await apiRequest(server, '/api/v1/providers/status?refresh=1');
 
-    expect(runCommand).toHaveBeenCalledTimes(8);
+    expect(runCommand).toHaveBeenCalledTimes(PROBE_ROUND * 2);
   });
 
   it('GET without refresh reuses the completed provider cache', async () => {
@@ -309,7 +319,7 @@ describe('workspace provider API', () => {
     await apiRequest(server, '/api/v1/providers/status');
     await apiRequest(server, '/api/v1/providers/status');
 
-    expect(runCommand).toHaveBeenCalledTimes(4);
+    expect(runCommand).toHaveBeenCalledTimes(PROBE_ROUND);
   });
 
   it('POST /api/v1/providers/:provider/retry clears only the current incident without enabling a disabled provider', async () => {
@@ -498,7 +508,7 @@ describe('workspace provider API', () => {
     const openTerminal = vi.fn(async () => true);
     const pending = connect(app({ providerAuth, openTerminal }), 'claude');
 
-    await vi.waitFor(() => expect(runCommand).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(runCommand).toHaveBeenCalledTimes(PROBE_ROUND));
     providerAuth.reportRuntimeAuthFailure('claude');
     release();
 

@@ -64,6 +64,7 @@ export const workspaceConfigResponseSchema = z.object({
       codex: z.string().optional(),
       opencode: z.string().optional(),
       pi: z.string().optional(),
+      copilot: z.string().optional(),
     }).optional(),
   }),
 });
@@ -97,6 +98,7 @@ export const setWorkspaceConfigInputSchema = z.object({
           codex: z.string().trim().min(1).max(200).nullable().optional(),
           opencode: z.string().trim().min(1).max(200).nullable().optional(),
           pi: z.string().trim().min(1).max(200).nullable().optional(),
+          copilot: z.string().trim().min(1).max(200).nullable().optional(),
         })
         .optional(),
     })
@@ -259,6 +261,7 @@ export const workspaceUiStateSchema = z.looseObject({
       codex: z.string().optional(),
       opencode: z.string().optional(),
       pi: z.string().optional(),
+      copilot: z.string().optional(),
     })
     .optional(),
   /** Settings → Appearance, GLOBAL since step 3.5: accent + density describe the person at the
@@ -316,6 +319,7 @@ export const setWorkspaceUiStateInputSchema = z
         codex: z.string().min(1).max(128).optional(),
         opencode: z.string().min(1).max(128).optional(),
         pi: z.string().min(1).max(128).optional(),
+        copilot: z.string().min(1).max(128).optional(),
       })
       .optional(),
     importedSkills: z
@@ -354,6 +358,7 @@ export const runnerModelsSchema = z.object({
   codex: z.string().optional(),
   opencode: z.string().optional(),
   pi: z.string().optional(),
+  copilot: z.string().optional(),
 });
 export type RunnerModels = z.infer<typeof runnerModelsSchema>;
 
@@ -401,6 +406,7 @@ export const setConfigInputSchema = z.object({
       codex: z.string().trim().max(200).nullable().optional(),
       opencode: z.string().trim().max(200).nullable().optional(),
       pi: z.string().trim().max(200).nullable().optional(),
+      copilot: z.string().trim().max(200).nullable().optional(),
     })
     .optional(),
   maxParallel: z.number().int().min(1).max(16).optional(),
