@@ -57,6 +57,13 @@ describe('AppShell', () => {
     expect(within(screen.getByRole('main')).getByText('route content')).toBeTruthy()
   })
 
+  it('renders the brand tile from the shared /icon.svg asset', () => {
+    renderShell('/')
+    const tile = document.querySelector('[data-slot="brand-tile"]') as HTMLImageElement | null
+    expect(tile).toBeTruthy()
+    expect(tile!.getAttribute('src')).toBe('/icon.svg')
+  })
+
   it('resets the main scroller to the top on navigation (#mobile-scroll-top)', () => {
     renderShell('/')
     const main = screen.getByRole('main')
@@ -210,8 +217,10 @@ describe('AppShell', () => {
 
   /* The footer used to be one wrapping row that overflowed the 264px column, so the theme toggle
    * silently fell onto a line of its own (#702). jsdom cannot measure that — but it can pin the
-   * structure that makes the wrap impossible: two rows, by construction, not by luck. */
-  describe('sidebar footer is two intentional rows (#702)', () => {
+   * structure that makes the wrap impossible: deliberate rows, by construction, not by luck. The
+   * machine glance is one more of them when it is mounted, which is why it is passed as a slot and
+   * asserted first in the list below. */
+  describe('sidebar footer rows are intentional (#702)', () => {
     const controls = () =>
       document.querySelector('[data-slot="sidebar-footer-controls"]') as HTMLElement
 
@@ -221,10 +230,20 @@ describe('AppShell', () => {
       expect(footer().className).not.toContain('flex-wrap')
     })
 
-    it('has exactly two children: the search bar, then the controls row', () => {
+    it('has exactly two children without the machine glance: the search bar, then the controls', () => {
       renderShell('/', { version: '1.2.3' })
       const children = Array.from(footer().children) as HTMLElement[]
       expect(children.map((child) => child.dataset.slot)).toEqual([
+        'command-palette-hint',
+        'sidebar-footer-controls',
+      ])
+    })
+
+    it('puts the machine glance above both, as its own row', () => {
+      renderShell('/', { version: '1.2.3', hostWidget: <span data-slot="host-widget-stub" /> })
+      const children = Array.from(footer().children) as HTMLElement[]
+      expect(children.map((child) => child.dataset.slot)).toEqual([
+        'host-widget-stub',
         'command-palette-hint',
         'sidebar-footer-controls',
       ])
@@ -406,6 +425,51 @@ describe('AppShell', () => {
       cleanup()
       renderShell('/p/shop/', { projectGroups: <p>groups</p> })
       expect(allTasks()!.getAttribute('aria-current')).toBeNull()
+    })
+  })
+
+  /**
+   * Dashboard and All tasks stack directly against each other, so they are peers: one row
+   * height, one type scale, one violet icon. Dashboard shipped with its own inline class string
+   * and drifted to a taller row with a grey icon; these pin the pair together.
+   */
+  describe('top-level doors read as peers', () => {
+    const dashboard = () => document.querySelector('[data-slot="dashboard-link"]') as HTMLElement
+    const allTasks = () => document.querySelector('[data-slot="all-tasks-link"]') as HTMLElement
+
+    /** The shared skin, minus the active-state background either row adds on its own page. */
+    const skin = (el: HTMLElement) => [...el.classList].filter(c => c !== 'bg-muted').sort()
+
+    it('paints both rows from the same class string', () => {
+      renderShell('/', { projectGroups: <p>groups</p> })
+      expect(skin(dashboard())).toEqual(skin(allTasks()))
+    })
+
+    it('gives both rows the touch height that relaxes to 36px on desktop', () => {
+      renderShell('/', { projectGroups: <p>groups</p> })
+      for (const row of [dashboard(), allTasks()]) {
+        expect(row.classList.contains('h-11')).toBe(true)
+        expect(row.classList.contains('md:h-9')).toBe(true)
+        // The drifted Dashboard row was `min-h-11` with no desktop override — 8px taller than
+        // the row beneath it at every width above `md`.
+        expect(row.classList.contains('min-h-11')).toBe(false)
+      }
+    })
+
+    it('gives both icons the violet accent', () => {
+      renderShell('/', { projectGroups: <p>groups</p> })
+      for (const row of [dashboard(), allTasks()]) {
+        const icon = row.querySelector('svg') as SVGElement
+        expect(icon).not.toBeNull()
+        expect(icon.getAttribute('class')).toContain('text-violet/70')
+      }
+    })
+
+    it('brings its own icon to full strength on its own page', () => {
+      renderShell('/dashboard', { projectGroups: <p>groups</p> })
+      const icon = dashboard().querySelector('svg') as SVGElement
+      expect(icon.getAttribute('class')).toContain('text-violet')
+      expect(icon.getAttribute('class')).not.toContain('text-violet/70')
     })
   })
 
@@ -865,5 +929,21 @@ describe('AppShell', () => {
       expect(content.className).toContain('pt-[env(safe-area-inset-top)]')
       expect(content.className).toContain('pb-[env(safe-area-inset-bottom)]')
     })
+  })
+})
+
+
+describe('Dashboard active navigation', () => {
+  it.each(['/dashboard', '/dashboard?view=costs', '/dashboard?period=30d'])('highlights %s beyond hover', entry => {
+    renderShell(entry)
+    const link = screen.getByRole('link', { name: 'Dashboard' })
+    expect(link.getAttribute('aria-current')).toBe('page')
+    expect(link.classList.contains('bg-muted')).toBe(true)
+  })
+  it('does not remain highlighted on another page', () => {
+    renderShell('/tasks')
+    const link = screen.getByRole('link', { name: 'Dashboard' })
+    expect(link.getAttribute('aria-current')).toBeNull()
+    expect(link.classList.contains('bg-muted')).toBe(false)
   })
 })

@@ -445,8 +445,9 @@ export function ThreadView({
           <AgentsDock key={`agents:${run.id}`} runId={run.id} agents={agents} onSelect={setOpenAgentId} />
 
           {plan !== undefined && plan.length > 0 ? (
-            // Keyed by run id: the collapse default re-derives per task (see PlanDock).
-            <PlanDock key={run.id} runId={run.id} entries={plan} />
+            // Keyed by run id: the collapse default re-derives per task (see PlanDock). Settled
+            // on the same rule as the Agents dock: a closed session never advances the plan.
+            <PlanDock key={run.id} runId={run.id} entries={plan} settled={runIsTerminal} />
           ) : null}
 
           {/* A usage-limit stop is the one `failed` state that is still going somewhere — the

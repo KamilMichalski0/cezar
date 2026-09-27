@@ -361,6 +361,7 @@ export function useTrackerItem(association: TrackerAssociation | null | undefine
  * scope changes → key changes → data gone → provider unmounts).
  */
 export const workspaceQueryKeys = {
+  dashboard: ['workspace', 'dashboard'] as const,
   models: (runner: string) => ['workspace', 'models', runner] as const,
   providerStatus: ['workspace', 'providers', 'status'] as const,
   projects: ['workspace', 'projects'] as const,
@@ -374,6 +375,11 @@ export const workspaceQueryKeys = {
   /** `~/.cezar/config.json`'s settings slice via `GET/PUT /api/workspace/config` (step 2.7):
    *  the global Resources knobs and the checkout root. */
   config: ['workspace', 'config'] as const,
+  /** Live host totals (spec `.ai/specs/2026-09-20-host-resource-telemetry.md`). One cache for
+   *  both transports: local cockpits fold pushed `host` frames into it, remote ones refetch it
+   *  on mount and on the visibility/reconnect reconcile. Workspace-led because the machine is
+   *  the machine, whichever project is on screen. */
+  hostUsage: ['workspace', 'host-usage'] as const,
   /** Agent accounts via `GET /api/v1/workspace/agent-profiles` (spec 2026-07-29-agent-profiles).
    *  Workspace-led like the registry: an account describes the machine, not a repo. */
   agentProfiles: ['workspace', 'agent-profiles'] as const,
@@ -977,6 +983,22 @@ export function useProjectRuns<TData = ApiRun[]>(
     enabled,
     select,
   })
+}
+
+/**
+ * A run list for a project chosen OUTSIDE `ProjectScopeProvider` (the app shell and command
+ * palette live above the routed provider). Do not use `useRuns()` there: its key is read during
+ * the shell render, while its fetch runs after the route provider has written the module scope,
+ * which can cache project B's response under project A's key.
+ */
+export function useRunsForProject<TData = ApiRun[]>(
+  projectId: string | null,
+  bootProjectId: string | null | undefined,
+  select?: (runs: ApiRun[]) => TData,
+) {
+  const selected = projectId === 'default' ? null : projectId
+  const boot = selected === null || (bootProjectId != null && selected === bootProjectId)
+  return useProjectRuns(boot ? 'default' : selected ?? 'default', true, boot, select)
 }
 
 /**

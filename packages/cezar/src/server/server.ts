@@ -59,6 +59,7 @@ import {
 } from '@open-mercato/cezar-contract';
 import { dispatchInputSchema, dispatchIntentSchema, dispatchReportSchema } from '@open-mercato/cezar-contract';
 import { detectEnvironment } from '../core/backend-detect.ts';
+import { hostUsageSampler, type HostSampler } from '../core/host-usage.ts';
 import { RUNNER_IDS } from '../core/agent-runner.ts';
 import type { ContentBlock } from '../core/agent-runner.ts';
 import { AGENT_MODELS_LOCKED_ERROR, agentModelsLocked } from '../core/agent-model-policy.ts';
@@ -74,7 +75,9 @@ import {
 } from '../core/provider-auth.ts';
 import { applyProviderEnablement } from '../core/provider-availability.ts';
 import { RunnerModelCatalog } from '../core/runner-model-catalog.ts';
-import { currentUsage, onUsage } from '../core/process-usage.ts';
+import { currentUsage, currentTimedUsage, onUsage } from '../core/process-usage.ts';
+import { DashboardReader } from '../workspace/dashboard.ts';
+import { dashboardRoutes } from './dashboard.ts';
 import { WORKFLOWS_DIR, loadWorkflows } from '../workflows/load.ts';
 import {
   QUICK_TASK_WORKFLOW,
@@ -227,6 +230,8 @@ import {
 } from './static-ui.ts';
 
 export interface ServerDeps {
+  /** Register app-owned cleanup for the hosting server lifecycle. */
+  onDispose?: (cleanup: () => void) => void;
   repoRoot: string;
   store: RunStore;
   manager: RunManager;
@@ -305,6 +310,10 @@ export interface ServerDeps {
    *  to the HTTP server it binds. Optional so legacy callers/tests change
    *  nothing: no hub, no topics, and the HTTP surface is byte-identical. */
   socketHub?: SocketHub;
+  /** The host-telemetry sampler behind the `host` topic and the `/workspace/host-usage` route.
+   *  Defaults to the process-wide singleton; injectable so tests can drive a frame shape (a
+   *  container object, for instance) that CI machines do not have. */
+  hostSampler?: HostSampler;
   /** Re-arm the workspace automation timer after definition mutations. */
   automationsChanged?: () => void;
 }
@@ -1498,7 +1507,7 @@ export function createApp(deps: ServerDeps) {
     //
     // Served out of the Vite build: the file is a `public/` asset of the web package, which the
     // build copies verbatim into `web/dist`. One home, one URL — the same bytes this route
-    // hands out are what the bundle's own `<img src="/open-mercato.svg">` asks for.
+    // hands out are what the bundle's own `<img src="/icon.svg">` asks for.
     // Without a build there is nothing to serve, which is a 404 rather than a crash (the shell
     // route answers the same dev-only state with its build hint).
     const path = join(distDir, name);
@@ -1554,8 +1563,10 @@ export function createApp(deps: ServerDeps) {
     });
   });
 
-  // The favicon packages/web/index.html points at (`/open-mercato.svg`).
-  app.get('/open-mercato.svg', staticFile('open-mercato.svg', 'image/svg+xml'));
+  // The favicon packages/web/index.html points at (`/icon.svg`).
+  app.get('/icon.svg', staticFile('icon.svg', 'image/svg+xml'));
+  // Compatibility alias for the pre-rename public URL (BACKWARD_COMPATIBILITY.md §2).
+  app.get('/open-mercato.svg', staticFile('icon.svg', 'image/svg+xml'));
 
   // ---- meta ----------------------------------------------------------------
   // CORS — deliberately for /api/health ONLY (spec 011): the bookmarklets
@@ -1624,6 +1635,7 @@ export function createApp(deps: ServerDeps) {
       // unreadable workspace degrades to `projects: []`.
       projects: workspace.projects,
       bootProject: workspace.bootProject,
+      ...(process.env.CEZ_INSTANCE_ID ? { instanceId: process.env.CEZ_INSTANCE_ID } : {}),
     };
   };
   // ---- server-side health cache (stale-while-revalidate) -------------------
@@ -1729,6 +1741,16 @@ export function createApp(deps: ServerDeps) {
   // fills while the browser is still downloading the bundle, so its first
   // `GET /api/health` reads a warm value instead of the cold ~1 s compute.
   if (deps.socketHub) void refreshHealth();
+  // The Machine card's live channel (spec `.ai/specs/2026-09-20-host-resource-telemetry.md`):
+  // demand-driven like every topic — the sampler's timer starts on 0→1 and stops on 1→0, so an
+  // idle workspace pays nothing — and trusted-only by the DEFAULT options, deliberately: unlike
+  // health this is not a discovery payload, so a foreign local page admitted by the loopback
+  // fallback must not be able to read which machine it is sitting on.
+  const hostSampler = deps.hostSampler ?? hostUsageSampler;
+  deps.socketHub?.registerTopic('host', {
+    snapshot: async () => hostSampler.sampleHostUsage(),
+    start: (publish) => hostSampler.onHostUsage(publish),
+  });
   /**
    * Warm the whole of cezar's agent knowledge — the three discovered defaults AND every extra
    * account — so no reader ever pays the first shell-out.
@@ -3027,6 +3049,13 @@ export function createApp(deps: ServerDeps) {
   // ---- chained family: workspace settings + GUI prefs (workspace-level) ----
   const workspaceConfigRoutes = new Hono<ProjectApiEnv>()
     .get('/workspace/config', async (c) => c.json(workspaceConfigBody(await loadWorkspaceConfig())))
+
+    // Live host totals for a REMOTE cockpit (spec `.ai/specs/2026-09-20-host-resource-telemetry.md`):
+    // the local cockpit gets them pushed over the `host` topic, but a remote one opens no
+    // WebSocket, so this is its snapshot + reconcile target. Same staleness-ruled sampler read as
+    // the topic — never a second compute path — and `cpuPct` is absent until a bounded delta
+    // window exists (the card renders `sampling…` and follows up once ~2.5 s later).
+    .get('/workspace/host-usage', async (c) => c.json(hostSampler.sampleHostUsage()))
 
     .put('/workspace/config', jsonZodValidator(() => workspaceConfigUpdateSchema), async (c) => {
       const parsed = { data: c.req.valid('json') };
@@ -5385,7 +5414,15 @@ export function createApp(deps: ServerDeps) {
             if (Object.keys(owned).length > 0) {
               void stream.writeSSE({
                 event: 'usage',
-                data: JSON.stringify({ project, usage: owned }),
+                data: JSON.stringify({
+                  project, usage: owned, sentAt: new Date().toISOString(),
+                  samples: Object.keys(owned).flatMap((runId) => {
+                    const run = store.getRun(runId);
+                    const timed = currentTimedUsage(runId);
+                    return timed && run?.status === 'running' && !run.archived
+                      ? [{ projectId: project, runId, ...timed }] : [];
+                  }),
+                }),
               });
             }
           }
@@ -6235,6 +6272,45 @@ export function createApp(deps: ServerDeps) {
       return c.json(body);
     });
 
+  const dashboard = new DashboardReader({
+    projects: async () => {
+      const selector = capabilities().singleProject ? { projectId: await resolveBootProject() } : undefined;
+      const projects = await listProjects(selector);
+      const bootId = await resolveBootProject(projects);
+      const summaries = projects.map((project) => {
+        const owned = project.status === 'missing' ? undefined
+          : project.id === bootId ? bootContext : contexts.peek(project.id);
+        return { id: project.id, root: project.root, ...(owned ? { store: owned.store } : {}) };
+      });
+      // Dashboard observability includes the folder this server actually serves even
+      // when the sidebar omits this unregistered launch folder (including task worktrees).
+      // Its existing context is authoritative; a dashboard read never registers it.
+      if (!summaries.some(project => project.id === bootId)) {
+        summaries.unshift({ id: bootId, root: bootRoot, store: bootContext.store });
+      }
+      return summaries;
+    },
+    telemetryProjects: async () => {
+      // Registry-only: no per-project probing, disk summaries, recovery, or new sampler.
+      const registry = (await loadWorkspaceConfig()).projects;
+      const bootId = await resolveBootProject(registry);
+      const boot = { id: bootId, root: bootRoot, store: bootContext.store };
+      if (capabilities().singleProject) return [boot];
+      return [boot, ...registry.filter(p => p.id !== bootId).flatMap(p => {
+        const owned = contexts.peek(p.id);
+        return owned ? [{ id: p.id, root: p.root, store: owned.store }] : [];
+      })];
+    },
+  });
+
+  const offDashboardRegistry = workspaceEvents.on((event, data) => {
+    if (event === 'project-removed') {
+      const id = (data as { id?: unknown }).id;
+      if (typeof id === 'string') dashboard.invalidateProject(id);
+    }
+  });
+  deps.onDispose?.(() => { offDashboardRegistry(); dashboard.dispose(); });
+
   // Workspace-level families answer for the whole workspace, so they are single-mount: never a
   // project-scoped spelling, which would be a second surface to protect with no consumer.
   const workspaceV1 = new Hono()
@@ -6249,6 +6325,7 @@ export function createApp(deps: ServerDeps) {
     .route('/', fsBrowseRoutes)
     .route('/', automationChecksRoutes)
     .route('/', runsIndexRoutes)
+    .route('/', dashboardRoutes(dashboard, () => ({ tokens: capabilities().tokenUsageMetrics, cost: capabilities().costMetrics }), () => capabilities().automations))
     .route('/', workspaceEventsRoutes);
 
   // ---- mount ---------------------------------------------------------------
@@ -6307,8 +6384,10 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
   // reason `capabilities()` is inside `createApp`: tests flip the variable between apps.
   const automationsEnabled = () => resolveCapabilities(process.env, deps.bindHost).automations;
   let rescheduleAutomations = () => {};
+  const appCleanups: Array<() => void> = [];
   const app = createApp({
     ...deps,
+    onDispose: (cleanup) => { appCleanups.push(cleanup); deps.onDispose?.(cleanup); },
     contexts: sharedContexts,
     automationStore: bootAutomationStore,
     workspaceEvents,
@@ -6424,7 +6503,7 @@ export function startServer(deps: ServerDeps, port: number): ServerType {
       })).then(() => automationScheduler.start()).catch(() => undefined);
     }).catch(() => undefined);
   });
-  server.once('close', () => { unsubscribe(); coordinator.stop(); automationScheduler.stop(); });
+  server.once('close', () => { for (const cleanup of appCleanups) cleanup(); unsubscribe(); coordinator.stop(); automationScheduler.stop(); });
   socketHub.attach(server, (req) => verifyWsUpgrade(req, deps.bindHost));
   return server;
 }
