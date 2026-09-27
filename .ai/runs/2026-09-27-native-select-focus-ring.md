@@ -91,8 +91,8 @@ Full `validation.commands` gate.
 
 ### Phase 2: Pin it with a guardian rule
 
-- [ ] 2.1 Add the native-select focus-ring rule to the design guardian
-- [ ] 2.2 Prove the rule fails without the Phase 1 fix
+- [x] 2.1 Add the native-select focus-ring rule to the design guardian — 8d4f26c4
+- [x] 2.2 Prove the rule fails without the Phase 1 fix — 8d4f26c4 (reverting the six source files to 8ef13ee4 fails it with exactly the eight sites)
 
 ### Phase 3: Validation
 
