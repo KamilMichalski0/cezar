@@ -14,7 +14,7 @@
 | 1 | 1.1 | Port the shared ACP client from PR #1049 | inline | done | e70442da |
 | 1 | 1.2 | Port the shared ACP→v2 mapper from PR #1049 | inline | done | 95769bb6 |
 | 2 | 2.1 | Record the verified Copilot ACP surface and frame vocabulary | inline | done | PENDING21 |
-| 2 | 2.2 | Add the `copilot` mapper dialect | inline | done | DIALECTSHA |
+| 2 | 2.2 | Add the `copilot` mapper dialect | inline | done | 75f013ae |
 | 2 | 2.3 | Add golden `__fixtures__/copilot/` transcripts for every parity row | inline | todo | — |
 | 2 | 2.4 | Add `copilot-ui-mapper.test.ts` replay and robustness tests | inline | todo | — |
 | 3 | 3.1 | Add `copilot-acp-runner.ts` (session lifecycle over `copilot --acp`) | inline | todo | — |
