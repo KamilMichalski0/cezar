@@ -37,7 +37,7 @@
 | 6 | 6.1 | Add `copilot` to `ui-parity.test.ts` `BACKENDS` | inline | done | 78a13a44 |
 | 6 | 6.2 | Document the runner in `AGENT_PROTOCOL.md` and `BACKWARD_COMPATIBILITY.md` | inline | done | 2b3ce11a |
 | 6 | 6.3 | Add the CHANGELOG entry and the README backends row | inline | done | 2b3ce11a |
-| 6 | 6.4-review-fix | Derive the Settings accounts tabs from the shared runner order | inline | done | RFSHA |
+| 6 | 6.4-review-fix | Derive the Settings accounts tabs from the shared runner order | inline | done | cce1f2a6 |
 
 ## Goal
 
