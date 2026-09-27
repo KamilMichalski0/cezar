@@ -12,8 +12,8 @@
 | Phase | Step | Title | Exec | Status | Commit |
 |-------|------|-------|------|--------|--------|
 | 1 | 1.1 | Port the shared ACP client from PR #1049 | inline | done | e70442da |
-| 1 | 1.2 | Port the shared ACP→v2 mapper from PR #1049 | inline | todo | — |
-| 2 | 2.1 | Record the verified Copilot ACP surface and frame vocabulary | inline | todo | — |
+| 1 | 1.2 | Port the shared ACP→v2 mapper from PR #1049 | inline | done | 95769bb6 |
+| 2 | 2.1 | Record the verified Copilot ACP surface and frame vocabulary | inline | done | PENDING21 |
 | 2 | 2.2 | Add the `copilot` mapper dialect | inline | todo | — |
 | 2 | 2.3 | Add golden `__fixtures__/copilot/` transcripts for every parity row | inline | todo | — |
 | 2 | 2.4 | Add `copilot-ui-mapper.test.ts` replay and robustness tests | inline | todo | — |
@@ -113,8 +113,9 @@ Spec Step 3.1, settled against the real binary before planning. These **correct*
   source spec used for codex — rather than from a recorded session. Every fixture header cites
   its source. Mitigation: the opt-in real-CLI smoke test (Step 3.4) is the gate that proves the
   mapping against a live account; it is skipped without entitlement.
-- **Usage reporting may be absent.** If Copilot carries no usage over ACP, `usage.updated`
-  degrades with a documented substitute (`--usage-output-file`) recorded in `AGENT_PROTOCOL.md` §4.
+- ~~**Usage reporting may be absent.**~~ **Resolved in Step 2.1**: the `session/prompt` result
+  carries a top-level `usage` object, so `usage.updated` needs no substitute. See
+  `copilot-acp-notes.md` § Token usage.
 - **Merge conflict with PR #1049** on the two shared ACP files. Bounded by taking them verbatim.
 - **Protected surfaces** (`BACKWARD_COMPATIBILITY.md` §2, §3, §7) are touched. Everything is
   additive: no runner id is renamed, `claude-cli` stays parseable, and v1 `AgentEvent` emission
@@ -145,9 +146,10 @@ Take `packages/cezar/src/core/acp-ui-mapper.ts` and its test verbatim. Generic `
 ### Phase 2 — The `copilot` dialect and its fixtures
 
 **2.1 Record the verified Copilot ACP surface and frame vocabulary**
-Write `copilot-acp-notes.md` into the run folder: the handshake, the auth-error frame, the flag
-and env inventory above, plus the `session/update` kinds and `_meta` keys extracted from the
-installed binary, each with the command that produced it.
+`copilot-acp-notes.md` in the run folder: the handshake, the auth-error frame, the flag and env
+inventory, and the `session/update` kinds, frame shapes, `stopReason` set, usage location,
+sub-agent `_meta` key and tool-name→kind table read out of the CLI's own bundle, each with the
+command or code site that produced it. It is the source the golden fixtures cite.
 
 **2.2 Add the `copilot` mapper dialect**
 `packages/cezar/src/core/copilot-ui-mapper.ts` — `usageFromPromptResult`, `planFromToolCall`,
