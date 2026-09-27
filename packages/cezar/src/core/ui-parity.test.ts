@@ -10,7 +10,9 @@
  * cover one — a named row fails here.
  *
  * `BACKENDS` lists every backend that owns a wire mapper. Pi uses its documented
- * RPC protocol and therefore has its own wire-faithful fixture set.
+ * RPC protocol and therefore has its own wire-faithful fixture set. Copilot speaks ACP through
+ * the shared mapper, but keeps its own fixtures and dialect for the same reason every backend
+ * does — parity is asserted over what the wire really produces, per runner.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -20,7 +22,7 @@ import { describe, expect, it } from 'vitest';
 import type { UiEvent, UiItem } from './ui-events.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const BACKENDS = ['claude', 'codex', 'opencode', 'pi'] as const;
+const BACKENDS = ['claude', 'codex', 'opencode', 'pi', 'copilot'] as const;
 
 /** Every event across every golden fixture of one backend. */
 function fixtureEvents(backend: (typeof BACKENDS)[number]): UiEvent[] {
@@ -95,10 +97,12 @@ describe('protocol v2 backend parity (every mapper emits every matrix capability
   }
 
   // Sub-agent NESTING rides on parentItemId where the wire attributes work
-  // to its parent: claude `parent_tool_use_id` and opencode child-session
-  // parts under a `subtask`. Codex's wire has no parent attribution — its
-  // matrix cell is the review-mode task items asserted above.
-  for (const backend of ['claude', 'opencode'] as const) {
+  // to its parent: claude `parent_tool_use_id`, opencode child-session parts
+  // under a `subtask`, and copilot's `_meta["github.com/copilot"].agentId`,
+  // which carries the delegating `task` call's own id. Codex's wire has no
+  // parent attribution — its matrix cell is the review-mode task items
+  // asserted above.
+  for (const backend of ['claude', 'opencode', 'copilot'] as const) {
     it(`${backend} nests sub-agent work via parentItemId`, () => {
       expect(items(fixtureEvents(backend)).some((item) => item.parentItemId !== undefined)).toBe(true);
     });
