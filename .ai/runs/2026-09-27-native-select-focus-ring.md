@@ -109,3 +109,12 @@ unset; neither goes near `packages/web`.
 
 - `om-auto-review-pr 1122 --autofix` — APPROVE. One minor (an unescaped `$` when the guardian
   resolves a `className={const}` name into a `RegExp`) and one doc nit, both fixed in `6d650939`.
+
+### CI
+
+- All checks green on `39157527` — `Unit, build, E2E, and package` (7m16s), all three CodeQL jobs,
+  the npm snapshot publish and the CLA. The two `workflows/` tests that fail under the task
+  runner's `CEZ_*` environment pass in CI, confirming they were never the diff.
+- PR #1122 is `BLOCKED` only on the base-branch ruleset's one required approval — an author
+  cannot approve their own PR.
+
