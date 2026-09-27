@@ -1,53 +1,45 @@
 # Handoff — 2026-09-27-copilot-cli-runner
 
-**Last updated:** 2026-09-27T16:32:59Z
+**Last updated:** 2026-09-27T17:12:33Z
 **Branch:** `feat/copilot-cli-runner`
-**PR:** https://github.com/open-mercato/cezar/pull/1113 (draft)
-**Current phase/step:** Phase 2 Step 2.3
-**Last commit:** `75f013ae` — feat(core): add the Copilot ACP dialect
+**PR:** https://github.com/open-mercato/cezar/pull/1113 (ready, `merge-queue`)
+**Current phase/step:** complete — every Tasks row is `done`
+**Last commit:** `cce1f2a6` — fix(web): stop the Settings accounts pane dropping the fifth agent
 
 ## What just happened
 
-- Checkpoint 1 passed: full `npm run typecheck` and the full `npm test` (8296 tests) are green.
-- The shared ACP layer (`acp-client.ts`, `acp-ui-mapper.ts`) is in, ported **verbatim** from draft
-  PR #1049 so the eventual merge is an identical-file resolution. The only edit is two additive
-  optional `AcpDialect` hooks (`toolStatusOf`, `parentItemOf`) that Copilot needs and Gemini does
-  not; they are inert for a dialect that omits them.
-- Spec Step 3.1 is settled against the real `@github/copilot` 1.0.88 and written up in
-  `copilot-acp-notes.md`. It corrects the spec in three places: the invocation is `copilot --acp`
-  (there is no `--stdio`), Copilot has a **native `plan` update channel**, and per-turn usage is a
-  **top-level `usage` on the `session/prompt` result** — so `usage.updated` needs no substitute.
-- `copilot` is now a real runner id everywhere the seam enumerates runners, and the dialect exists.
+- All 26 planned Steps landed, plus one `6.4-review-fix`.
+- The full gate passed: typecheck, `npm test` (8361 passed, 3 skipped), test:unit, build, test:package.
+- The review pass found and fixed one **major**: Settings → Agent accounts built its tab list from a
+  hand-written `ProviderId[]` literal and so rendered four tabs out of five, omitting Copilot —
+  the one runner this branch adds. A `ProviderId[]` literal is under-wide, never wrong, so the
+  type system could not catch it the way it caught every `Record<ProviderId, …>` beside it.
+- PR flipped to ready, labelled, QA instructions posted.
 
 ## Next concrete action
 
-- Step 2.3 — write `packages/cezar/src/core/__fixtures__/copilot/` (`.ndjson` + `.expected.json`
-  pairs) covering every `ui-parity.test.ts` capability row, plus a `README.md` citing
-  `copilot-acp-notes.md` frame by frame.
+- None from this run. The PR is waiting on a human review and on manual QA (`needs-qa`).
+- If a reviewer wants the remaining follow-up: map Copilot's `usage_update` (`{used, size}`) to
+  `TokenUsage.contextWindow`, which needs a third hook on the shared ACP mapper.
 
 ## Blockers / open questions
 
-- **No authenticated Copilot transcript.** The host `gh` token has no Copilot entitlement, so the
-  fixtures cannot be captured the way #1049 captured Gemini's. They are derived instead from the
-  CLI's own ACP emitters, read out of the bundle inside the installed binary — the same offline
-  method the source spec used for codex. Every fixture header must say so, and Step 3.4's opt-in
-  real-CLI smoke test is the live gate.
-- `createRunner` currently **throws** for `copilot`. Step 3.1 replaces that with the real runner;
-  do not ship without it.
+- **The ACP layer overlaps draft PR #1049.** `core/acp-client.ts` is byte-identical to #1049;
+  `core/acp-ui-mapper.ts` differs only by two additive optional `AcpDialect` hooks
+  (`toolStatusOf`, `parentItemOf`) and their two call sites. Whichever PR lands second drops its
+  copy — for this one that is a delete, for #1049 it is a rebase that keeps the two hooks.
+- **No authenticated Copilot transcript** was available, so the streaming fixtures come from the
+  CLI's own ACP bridge rather than a capture. `copilot-acp-runner.smoke.test.ts` is the live gate.
+- **No browser verification**: `npm run test:e2e` skipped for want of a provisionable browser.
 
 ## Environment caveats
 
-- Dev runtime runnable: yes. `npm ci` done in this worktree.
-- Browser / UI checks: skipped — no `.ai/qa/test-env.json` descriptor in the repo, and nothing
-  user-drivable exists until the runner lands.
-- Database/migration state: n/a.
-- `npm test` needs `TMPDIR`, `TMP`, `TEMP` and `CEZ_*` cleared. `automations-gate.test.ts` is a
-  known flake under concurrent-worktree load — re-run it in isolation before blaming the diff.
-- A scratch Copilot CLI install used for verification lives at
-  `/home/cezar/cezar/.ai/cezar/tmp/0da5390a-cd8b-4926-b58d-ac7792074f51/copilot-probe/`
-  (`npm i @github/copilot@1.0.88` in a fresh dir recreates it).
+- Dev runtime runnable: yes; the dry-run server boots and serves a `copilot` run end to end.
+- Browser / UI checks: skipped — the `agent-browser` provider cannot be provisioned on this host.
+- `npm test` needs `TMPDIR`/`TMP`/`TEMP` and `CEZ_*` cleared. Two different tests under
+  `src/automations/` flaked once each under concurrent-worktree load and passed in isolation.
 
 ## Worktree
 
 - Path: `/home/cezar/cezar/.ai/cezar/worktrees/0da5390a-cd8b-4926-b58d-ac7792074f51`
-- Created this run: no (reused the current linked worktree)
+- Created this run: no (reused the current linked worktree, so nothing to clean up)

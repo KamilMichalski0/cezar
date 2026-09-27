@@ -72,3 +72,14 @@
 - This repository writes `CHANGELOG.md` at release time from the merged PRs; no recent feature or
   fix PR touches it. Adding a line here would collide with the release draft. The README backends
   row, which IS this PR's to write, is done.
+
+## 2026-09-27T17:12:33Z — review pass: one major found and fixed
+- `om-auto-review-pr 1113 --autofix`. The Settings → Agent accounts pane built its tab list from a
+  hand-written `ProviderId[]` literal, so it rendered four tabs out of five and the missing one was
+  Copilot. Fixed in `cce1f2a6` by deriving from an exported `RUNNER_ORDER`; three parameterized
+  tests that also enumerated four runners now cover `copilot`.
+- Full gate re-run clean afterwards: 8361 passed, 3 skipped.
+
+## 2026-09-27T17:12:33Z — run complete
+- PR #1113 flipped to ready, pipeline label `merge-queue`, `needs-qa` retained (no browser QA was
+  possible here). Manual QA instructions posted. Lock released.
