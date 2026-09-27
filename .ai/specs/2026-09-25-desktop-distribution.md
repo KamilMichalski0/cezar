@@ -135,11 +135,12 @@ The mark lives in three places, on two cadences:
 
 | Where | Ships with | Command |
 | --- | --- | --- |
-| Cockpit brand tile + favicon (`packages/web/public/open-mercato.svg`) | cezar (npm) — every channel update | replace the SVG |
-| App icon set (`packages/desktop/src-tauri/icons/*`: `.icns`, `.ico`, PNGs) and the splash logo (`packages/desktop/ui/open-mercato.svg`) | the shell — one shell release | `cd packages/desktop && npm run icon [-- path/to/new.svg]` |
+| Cockpit brand tile + favicon (`packages/web/public/icon.svg`) | cezar (npm) — every channel update | replace the SVG |
+| App icon set (`packages/desktop/src-tauri/icons/*`: `.icns`, `.ico`, PNGs) and the splash logo (`packages/desktop/ui/icon.svg`) | the shell — one shell release | `cd packages/desktop && npm run icon [-- path/to/new.svg]` |
 
-`npm run icon` wraps the SVG full-bleed (macOS masks its own squircle; a transparent margin
-gets a white plate in the Dock), renders it and runs `tauri icon`, then bumps nothing — bump
+`npm run icon` wraps the SVG full-bleed (macOS masks its own squircle; a transparent corner or
+margin gets a white plate in the Dock) — filled with `--bg` when given, the mark's gradient when
+it has one, else the brand tile's black — renders it and runs `tauri icon`. It bumps nothing: bump
 the shell version, tag `desktop-v…`, and every installed app shows the new icon after its next
 launch (the shell auto-update). Nobody is stuck on an old icon: it is a bundle resource, not
 something installed once. macOS may keep the previous icon in its cache until the app is
@@ -212,6 +213,10 @@ of them is the one case where the shell must ship BEFORE the cezar version that 
   and insets the app shell — so every version looks right under the shell, not only the ones
   that know about it. The same path injects the "Update cezar" pill there, driven by the
   shell's own `npm view` of the channel's dist-tag; a desktop-aware cockpit paints its own.
+- **Version chip** (legacy cockpits): beside the pill, always present, `v<running> ▾` — a click
+  pops the Versions list up as a native menu at the pointer. A registry cockpit without the
+  update dialog therefore still has a visible, in-window way to any installed version,
+  local builds included.
 - **Port**: 4321 first (so `http://localhost:4321` works in a browser beside the app), the
   next few when busy, then any free port; the actual URL is on the app menu's
   "Open … in browser" item.

@@ -71,43 +71,78 @@ const INIT_SCRIPT: &str = r#"
     document.documentElement.dataset.cezDesktop = platform;
     if (platform !== "macos" || location.protocol !== "http:") return;
 
-    // The title strip's "Update cezar" pill, for cockpits that predate the desktop-aware build
-    // (those paint their own from health's `latestVersion`). The shell calls `showUpdate` once it
-    // has compared the running version with the channel's newest on the registry.
-    var pending = null;
-    function renderPill(version) {
-      if (document.querySelector('[data-cez-update-pill]')) return;
+    // What the shell adds to the title strip of a cockpit that predates the desktop-aware build
+    // (a desktop-aware one paints its own from health): a VERSION chip that opens the list of
+    // installed versions — always there, so no version is ever a dead end — and, when the channel
+    // has something newer, the "Update cezar" pill. Both live in one row after the traffic lights.
+    var pendingVersion = null, pendingUpdate = null;
+    function items() {
       var strip = document.querySelector('[data-cez-legacy-titlebar]');
-      if (!strip) { pending = version; return; }
+      if (!strip) return null;
+      var row = document.querySelector('[data-cez-titlebar-items]');
+      if (row) return row;
+      row = document.createElement('div');
+      row.setAttribute('data-cez-titlebar-items', '');
+      row.style.cssText = 'position:fixed;top:5px;left:80px;height:18px;z-index:2147483001;display:flex;' +
+        'align-items:center;gap:6px;color:inherit;' +
+        'font:600 11px/1 -apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif;';
+      var style = document.createElement('style');
+      style.textContent = '@keyframes cezPulse{0%,100%{opacity:1}50%{opacity:.35}}' +
+        '[data-cez-titlebar-items] button{appearance:none;height:18px;display:inline-flex;align-items:center;' +
+        'gap:6px;padding:0 8px;border-radius:999px;color:inherit;font:inherit;cursor:pointer;-webkit-app-region:no-drag}' +
+        '[data-cez-version-chip]{border:1px solid color-mix(in srgb,currentColor 22%,transparent);background:transparent;opacity:.75}' +
+        '[data-cez-version-chip]:hover{opacity:1;background:color-mix(in srgb,currentColor 10%,transparent)}' +
+        '[data-cez-update-pill]{border:1px solid rgba(168,243,114,.45);background:rgba(168,243,114,.16)}' +
+        '[data-cez-update-pill]:hover{background:rgba(168,243,114,.3)}';
+      document.head.appendChild(style);
+      (document.querySelector('[data-slot="app-shell"]') || document.body).appendChild(row);
+      return row;
+    }
+    function invoke(command) {
+      if (window.__TAURI_INTERNALS__) window.__TAURI_INTERNALS__.invoke(command);
+    }
+    function renderVersion(version) {
+      var row = items();
+      if (!row) { pendingVersion = version; return; }
+      var chip = row.querySelector('[data-cez-version-chip]');
+      if (!chip) {
+        chip = document.createElement('button');
+        chip.type = 'button';
+        chip.setAttribute('data-cez-version-chip', '');
+        chip.title = 'Switch cezar version';
+        chip.onclick = function () { invoke('show_versions_menu'); };
+        row.insertBefore(chip, row.firstChild);
+      }
+      chip.innerHTML = '<span style="font-family:ui-monospace,Menlo,monospace;font-weight:500">v' + version +
+        '</span><span style="font-size:8px;opacity:.7">▼</span>';
+    }
+    function renderPill(version) {
+      var row = items();
+      if (!row) { pendingUpdate = version; return; }
+      if (row.querySelector('[data-cez-update-pill]')) return;
       var pill = document.createElement('button');
       pill.type = 'button';
       pill.setAttribute('data-cez-update-pill', '');
       pill.title = 'Update cezar to v' + version + ' and restart';
-      pill.style.cssText = 'position:fixed;top:5px;left:80px;height:18px;z-index:2147483001;' +
-        'display:inline-flex;align-items:center;gap:6px;padding:0 8px;border-radius:999px;' +
-        'border:1px solid rgba(168,243,114,.45);background:rgba(168,243,114,.16);color:inherit;' +
-        'font:600 11px/1 -apple-system,BlinkMacSystemFont,Inter,system-ui,sans-serif;cursor:pointer;' +
-        '-webkit-app-region:no-drag;';
       pill.innerHTML = '<span style="width:5px;height:5px;border-radius:50%;background:#fbbf24;animation:cezPulse 1.6s ease-in-out infinite"></span>' +
         'Update cezar <span style="font-family:ui-monospace,Menlo,monospace;font-weight:500;opacity:.7">v' + version + '</span>';
-      pill.onmouseenter = function () { pill.style.background = 'rgba(168,243,114,.3)'; };
-      pill.onmouseleave = function () { pill.style.background = 'rgba(168,243,114,.16)'; };
       pill.onclick = function () {
         pill.disabled = true;
         pill.style.opacity = '.6';
-        if (window.__TAURI_INTERNALS__) window.__TAURI_INTERNALS__.invoke('update_cezar_command');
+        invoke('update_cezar_command');
       };
-      var style = document.createElement('style');
-      style.textContent = '@keyframes cezPulse{0%,100%{opacity:1}50%{opacity:.35}}';
-      document.head.appendChild(style);
-      (document.querySelector('[data-slot="app-shell"]') || document.body).appendChild(pill);
+      row.appendChild(pill);
     }
-    // `offer_update` (Rust) calls this once the shell knows the channel has something newer.
+    function legacy() {
+      // A desktop-aware cockpit shows its own controls — never two sets.
+      return !document.querySelector('[data-slot="desktop-titlebar"]');
+    }
+    // `offer_update` / `offer_version` (Rust) call these once the shell knows.
     window.__CEZ_DESKTOP__.showUpdate = function (version) {
-      if (!version) return;
-      // A desktop-aware cockpit shows its own pill — never two.
-      if (document.querySelector('[data-slot="desktop-titlebar"]')) return;
-      renderPill(version);
+      if (version && legacy()) renderPill(version);
+    };
+    window.__CEZ_DESKTOP__.showVersion = function (version) {
+      if (version && legacy()) renderVersion(version);
     };
 
     // A cockpit that knows about the shell paints its own transparent title strip
@@ -135,7 +170,8 @@ const INIT_SCRIPT: &str = r#"
         '[data-slot="app-shell"]>aside[data-slot="sidebar"],[data-slot="app-shell"]>div{padding-top:28px!important}' +
         '[data-slot="sidebar-content"]>div:first-child{padding-top:6px!important}';
       document.head.appendChild(style);
-      if (pending) { var v = pending; pending = null; renderPill(v); }
+      if (pendingVersion) { var v = pendingVersion; pendingVersion = null; renderVersion(v); }
+      if (pendingUpdate) { var u = pendingUpdate; pendingUpdate = null; renderPill(u); }
     }, 100);
   })();
 "#;
@@ -422,6 +458,28 @@ fn check_cezar_update(app: &AppHandle, shell: &Shell) {
 
 /// Tell the page there is something newer. The desktop-aware cockpit ignores this (it paints
 /// its own button from the sidecar's check); a legacy one grows the button in its strip.
+fn offer_version(window: &WebviewWindow, version: &str) {
+    let _ = window.eval(&format!(
+        "window.__CEZ_DESKTOP__ && window.__CEZ_DESKTOP__.showVersion && window.__CEZ_DESKTOP__.showVersion({})",
+        js_string(version)
+    ));
+}
+
+/// The title strip's version chip (legacy cockpits) lands here: pop the Versions list up as a
+/// native menu at the pointer. Menus are main-thread objects, commands are not.
+#[tauri::command]
+fn show_versions_menu(app: AppHandle, window: WebviewWindow, shell: tauri::State<'_, Arc<Shell>>) {
+    use tauri::menu::ContextMenu;
+    let shell = shell.inner().clone();
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        refresh_versions_menu(&handle, &shell);
+        if let Some(menu) = shell.versions_menu.lock().unwrap().as_ref() {
+            let _ = menu.popup(window.as_ref().window().clone());
+        }
+    });
+}
+
 fn offer_update(window: &WebviewWindow, version: &str) {
     let _ = window.eval(&format!(
         "window.__CEZ_DESKTOP__ && window.__CEZ_DESKTOP__.showUpdate && window.__CEZ_DESKTOP__.showUpdate({})",
@@ -461,7 +519,7 @@ pub fn run() {
     let shell_for_state = shell.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![update_cezar_command, retry_start])
+        .invoke_handler(tauri::generate_handler![update_cezar_command, retry_start, show_versions_menu])
         .setup(move |app| {
             app.manage(shell_for_state.clone());
             let handle = app.handle().clone();
@@ -664,6 +722,9 @@ fn supervise(app: AppHandle, shell: Arc<Shell>) {
             let generation = pid;
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(4));
+                if let (Some(version), Some(window)) = (shell.running_version.lock().unwrap().clone(), app.get_webview_window("main")) {
+                    offer_version(&window, &version);
+                }
                 check_cezar_update(&app, &shell);
                 std::thread::sleep(Duration::from_secs(30 * 60));
                 // A new sidecar starts its own checker; this one retires.
