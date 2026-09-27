@@ -26,17 +26,17 @@
 | 4 | 4.3 | Add the provider-auth descriptor, action gate and server-install step | inline | done | f7cff6ae |
 | 4 | 4.4 | Add the credential allowlist and agent-profile entries | inline | done | f7cff6ae |
 | 4 | 4.5 | Add the model seam: identity map, presets, model-settings strategy, catalog | inline | done | f7cff6ae |
-| 4 | 4.6 | Add the `agent-config/catalog.ts` config-file entries | inline | todo | — |
+| 4 | 4.6 | Add the `agent-config/catalog.ts` config-file entries | inline | done | 4e370d54 |
 | 4 | 4.7 | Widen the per-runner zod records across contract, config and server bodies | inline | done | f7cff6ae |
 | 4 | 4.8 | Add `resumeCommand()` and open-in-app support | inline | done | f7cff6ae |
 | 5 | 5.1 | Cockpit: provider status, auth alert, tools menu, open-in menu | inline | done | f7cff6ae |
-| 5 | 5.2 | Cockpit: Settings → Agents descriptor, accounts and provider settings rows | inline | todo | — |
+| 5 | 5.2 | Cockpit: Settings → Agents descriptor, accounts and provider settings rows | inline | done | 4e370d54 |
 | 5 | 5.3 | Cockpit: composer, thread and automations runner mirrors | inline | done | f7cff6ae |
-| 5 | 5.4 | Pin `runnerDiscoversModels('copilot') === false` and the free-text picker | inline | todo | — |
+| 5 | 5.4 | Pin `runnerDiscoversModels('copilot') === false` and the free-text picker | inline | done | 4e370d54 |
 | 5 | 5.5 | Update the e2e runner mirrors and add the dry-run smoke | inline | done | f7cff6ae |
 | 6 | 6.1 | Add `copilot` to `ui-parity.test.ts` `BACKENDS` | inline | done | 78a13a44 |
-| 6 | 6.2 | Document the runner in `AGENT_PROTOCOL.md` and `BACKWARD_COMPATIBILITY.md` | inline | todo | — |
-| 6 | 6.3 | Add the CHANGELOG entry and the README backends row | inline | todo | — |
+| 6 | 6.2 | Document the runner in `AGENT_PROTOCOL.md` and `BACKWARD_COMPATIBILITY.md` | inline | done | DOCSSHA |
+| 6 | 6.3 | Add the CHANGELOG entry and the README backends row | inline | done | DOCSSHA |
 
 ## Goal
 
@@ -247,6 +247,14 @@ Three fixes were folded in because the widening would otherwise have EXTENDED a 
 was already wrong) no longer reports an OpenCode outage; and the provider-probe counts in three
 test files are derived from `PROVIDER_IDS` instead of the literal `4`, so runner #6 does not
 repeat this churn.
+
+## Deviation from the plan — no CHANGELOG entry
+
+Step 6.3 planned a CHANGELOG line. The repository does not work that way: `CHANGELOG.md` is
+written at release time by `om-auto-update-changelog` from the PRs merged since the last release,
+and **no** recent feature or fix PR touches it (`da9013f5`, `232df09f`, `497f2974`, `69929469`,
+`85985202` — all zero). Adding one here would conflict with the release draft rather than help it.
+The README backends row, which is the part of 6.3 that is this PR's to write, is done.
 
 ## Execution note
 
