@@ -15,8 +15,8 @@
 | 1 | 1.2 | Port the shared ACP→v2 mapper from PR #1049 | inline | done | 95769bb6 |
 | 2 | 2.1 | Record the verified Copilot ACP surface and frame vocabulary | inline | done | PENDING21 |
 | 2 | 2.2 | Add the `copilot` mapper dialect | inline | done | 75f013ae |
-| 2 | 2.3 | Add golden `__fixtures__/copilot/` transcripts for every parity row | inline | done | FIXSHA |
-| 2 | 2.4 | Add `copilot-ui-mapper.test.ts` replay and robustness tests | inline | todo | — |
+| 2 | 2.3 | Add golden `__fixtures__/copilot/` transcripts for every parity row | inline | done | b907902f |
+| 2 | 2.4 | Add `copilot-ui-mapper.test.ts` replay and robustness tests | inline | done | b907902f |
 | 3 | 3.1 | Add `copilot-acp-runner.ts` (session lifecycle over `copilot --acp`) | inline | todo | — |
 | 3 | 3.2 | Add `scripts/mock-copilot-acp.mjs` and wire `CEZ_DRY_RUN` | inline | todo | — |
 | 3 | 3.3 | Add runner tests: follow-up, cancel, resume, permission auto-answer, teardown | inline | todo | — |
@@ -236,6 +236,9 @@ the tuple grows, and the contract-parity guard is a compile error until `backend
 typecheck, which is worse for bisecting than one commit that does. The Steps left standing are
 the ones the type system does NOT force: the config catalog (4.6), the Settings → Agents
 descriptor (5.2) and the model-discovery pin (5.4).
+
+Steps 2.3 and 2.4 also share one commit: an `.expected.json` with no replay test asserts nothing,
+so the fixtures and `copilot-ui-mapper.test.ts` are one reviewable unit.
 
 Three fixes were folded in because the widening would otherwise have EXTENDED a defect:
 `createRunner` now refuses `copilot` instead of falling through to Claude;
