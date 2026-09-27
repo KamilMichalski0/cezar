@@ -82,6 +82,8 @@ Full `validation.commands` gate.
 
 ## Progress
 
+PR: #1122
+
 > Convention: `- [ ]` pending, `- [x]` done. Append ` — <commit sha>` when a step lands. Do not rename step titles.
 
 ### Phase 1: Restore the ring on every bare native select
@@ -102,3 +104,8 @@ Two `npm test` files (`workflows/system-prompt`, `workflows/agent-profile-wiring
 the cezar task environment — the runner exports `CEZ_TODOS_FILE`, and one of those tests asserts
 the composed system prompt does NOT contain that string. Both pass with the `CEZ_*` variables
 unset; neither goes near `packages/web`.
+
+### Review
+
+- `om-auto-review-pr 1122 --autofix` — APPROVE. One minor (an unescaped `$` when the guardian
+  resolves a `className={const}` name into a `RegExp`) and one doc nit, both fixed in `6d650939`.
