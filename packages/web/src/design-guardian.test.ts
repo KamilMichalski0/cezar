@@ -257,15 +257,18 @@ function openingTag(source: string, from: number): string {
 /**
  * Whether a `<select>` opening tag carries the ring — directly, or through a `className={ident}`
  * naming a const declared in the same file (how `components/dispatch-toggle.tsx` spells it).
- * The declaration lookup spans the three lines after the name, which is what a wrapped Tailwind
- * string takes; a const spelled longer than that reports as a violation rather than passing
- * silently, so this can only over-report.
+ * The declaration lookup spans its own line and the three after it, which is what a wrapped
+ * Tailwind string takes; a const spelled longer than that reports as a violation rather than
+ * passing silently, so this can only over-report.
  */
 function carriesFocusRing(tag: string, source: string): boolean {
   if (tag.includes(SELECT_FOCUS_MARKER)) return true
   const ref = /className=\{\s*([A-Za-z_$][\w$]*)\s*\}/.exec(tag)
   if (!ref) return false
-  const decl = new RegExp(`\\b(?:const|let|var)\\s+${ref[1]}\\b(?:[^\\n]*\\n?){1,4}`).exec(source)
+  // `$` is legal in an identifier and is an anchor in a pattern — unescaped, a `className={$x}`
+  // would match nothing and report a select that does carry the ring.
+  const name = ref[1]!.replace(/\$/g, '\\$')
+  const decl = new RegExp(`\\b(?:const|let|var)\\s+${name}\\b(?:[^\\n]*\\n?){1,4}`).exec(source)
   return decl !== null && decl[0].includes(SELECT_FOCUS_MARKER)
 }
 
