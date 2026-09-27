@@ -11,7 +11,7 @@
 
 | Phase | Step | Title | Exec | Status | Commit |
 |-------|------|-------|------|--------|--------|
-| 1 | 1.1 | Port the shared ACP client from PR #1049 | inline | done | ea097ee7 |
+| 1 | 1.1 | Port the shared ACP client from PR #1049 | inline | done | e70442da |
 | 1 | 1.2 | Port the shared ACP→v2 mapper from PR #1049 | inline | todo | — |
 | 2 | 2.1 | Record the verified Copilot ACP surface and frame vocabulary | inline | todo | — |
 | 2 | 2.2 | Add the `copilot` mapper dialect | inline | todo | — |
