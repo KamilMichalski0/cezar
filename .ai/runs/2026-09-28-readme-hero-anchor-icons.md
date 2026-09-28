@@ -68,3 +68,19 @@ PR: #1130
 ### Phase 3: Verification
 
 - [x] 3.1 Verify the GitHub-rendered branch README has no permalink icon in the hero and the `#quick-start` nav link still resolves — 86a8d5bb
+
+<!-- PROBE START — temporary, removed in the next commit -->
+
+<font size="6">PROBE-FONT-TAG</font>
+
+<span style="font-size: 32px">PROBE-SPAN-STYLE</span>
+
+<big>PROBE-BIG-TAG</big>
+
+<h3 align="center"><img src="docs/brand/cezar-icon-black.svg" width="40" alt="" /></h3>
+
+<h3 align="center">PROBE-CENTERED-HEADING</h3>
+
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/cezar-icon-black.svg"><img src="docs/brand/cezar-icon-white.svg" width="40" alt="PROBE-PICTURE" /></picture></p>
+
+<!-- PROBE END -->
