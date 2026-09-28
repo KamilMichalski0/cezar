@@ -3,6 +3,8 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
+import { BRAND_MARK_POLYGONS } from './components/brand-mark'
+
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 function readBrandSvg(): string {
@@ -58,6 +60,24 @@ describe('cockpit brand asset', () => {
     expect(new Set(fills(svg))).toEqual(new Set(['#000000', '#ffffff']))
     // The mark is the white group drawn after the tile.
     expect(svg.indexOf('#ffffff')).toBeGreaterThan(svg.indexOf('<rect'))
+  })
+
+  // The sidebar draws the mark itself (tile-less, in the text colour) instead of showing the
+  // tiled file, so the artwork exists twice. This is what keeps the two from drifting: the
+  // component's polygons must be the file's, in order.
+  it('is the same artwork the sidebar lockup draws', () => {
+    const inFile = [...readBrandSvg().matchAll(/<polygon\b[^>]*\bpoints="([^"]+)"/g)].map((match) => match[1])
+    expect(inFile).toEqual([...BRAND_MARK_POLYGONS])
+  })
+
+  // Self-hosted like every other face (the cockpit must work offline) and licensed beside it.
+  it('ships the wordmark face, Chakra Petch SemiBold, with its licence', () => {
+    const fonts = resolve(webRoot, 'src/assets/fonts')
+    expect(readFileSync(resolve(fonts, 'chakra-petch-latin-600-normal.woff2')).subarray(0, 4).toString('latin1')).toBe('wOF2')
+    expect(readFileSync(resolve(fonts, 'chakra-petch-LICENSE.txt'), 'utf8')).toContain('SIL Open Font License')
+    const css = readFileSync(resolve(webRoot, 'src/styles/index.css'), 'utf8')
+    expect(css).toMatch(/font-family: 'Chakra Petch';[\s\S]*?font-weight: 600;[\s\S]*?chakra-petch-latin-600-normal\.woff2/)
+    expect(css).toMatch(/--brand: 'Chakra Petch', var\(--sans\);/)
   })
 
   it('points the favicon at /icon.svg', () => {

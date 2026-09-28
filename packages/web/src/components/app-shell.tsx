@@ -20,6 +20,7 @@ import { openCommandPalette } from '@/components/command-palette'
 import { GithubIcon } from '@/components/icons'
 import { commandShortcutHint } from '@/lib/use-command-shortcut'
 import { Link, stripProjectPrefix } from '@/lib/project-router'
+import { BrandLockup } from '@/components/brand-mark'
 import { SelfUpdateDialog } from '@/components/self-update-dialog'
 import { StatusDot } from '@/components/status-dot'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -44,13 +45,6 @@ import {
   writeStoredSidebarWidth,
 } from '@/lib/sidebar-width'
 import { cn } from '@/lib/utils'
-// The Open Mercato brand mark. A `public/` asset, not a bundled import: the service serves the
-// same file at this exact path (`GET /icon.svg` — the favicon index.html points at), so
-// a second, hashed URL for the same picture would be one cache entry too many. Vite serves
-// `public/` at the root in dev and copies it into the build, so the path holds in both.
-// Its own solid purple tile + rounded corners ARE the tile.
-const brandLogoUrl = '/icon.svg'
-
 /** Tailwind's `md`. The drawer is the `<md` affordance, so this must stay in step with the
  *  `md:hidden` / `md:flex` classes below — they are the same breakpoint expressed twice, once
  *  for CSS and once for the state machine. */
@@ -599,8 +593,7 @@ function SidebarContent({
       className="@container/sidebar flex min-h-0 flex-1 flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
     >
       <div className={cn('flex items-center gap-[9px] px-3.5 pb-2.5', compactHeader ? 'pt-1.5' : 'pt-3.5')}>
-        <BrandTile />
-        <span className="text-[15px] font-semibold">cezar</span>
+        <BrandLockup />
         {/* With project groups mounted the boot repo/branch is one group header among many —
             a chip repeating it up here would just be the first group's header said twice. */}
         {repo && !projectGroups ? (
@@ -991,20 +984,6 @@ function VersionChip({ version, latestVersion }: { version: string; latestVersio
       </button>
       {open ? <SelfUpdateDialog open={open} onOpenChange={setOpen} /> : null}
     </>
-  )
-}
-
-/** The Open Mercato brand mark. The SVG carries its own purple tile and rounded corners, so it is
- *  the tile — no wrapper background. */
-function BrandTile() {
-  return (
-    <img
-      src={brandLogoUrl}
-      alt=""
-      aria-hidden="true"
-      data-slot="brand-tile"
-      className="size-[26px] shrink-0 rounded-sm"
-    />
   )
 }
 
