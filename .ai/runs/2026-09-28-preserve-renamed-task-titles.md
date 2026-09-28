@@ -23,15 +23,17 @@ Risks: cache keys and list shapes must remain aligned across project-scoped quer
 
 ## Progress
 
+PR: #1125 (https://github.com/open-mercato/cezar/pull/1125)
+
 > Convention: `- [ ]` pending, `- [x]` done. Append ` — <commit sha>` when a step lands. Do not rename step titles.
 
 ### Phase 1: Reproduce and protect cache ownership
 
-- [ ] 1.1 Add reducer regression tests proving stale auto/undefined title data cannot replace user/marker-owned titles while ordinary fields still merge.
-- [ ] 1.2 Add query/mutation regression coverage for successful rename write-back and runs-index invalidation.
+- [x] 1.1 Add reducer regression tests proving stale auto/undefined title data cannot replace user/marker-owned titles while ordinary fields still merge. — 286a5157, 7f589ead
+- [x] 1.2 Add query/mutation regression coverage for successful rename write-back and runs-index invalidation. — 286a5157
 
 ### Phase 2: Implement and validate
 
-- [ ] 2.1 Enforce title-origin precedence in the shared `mergeRun` reducer.
-- [ ] 2.2 Apply successful rename responses to list/detail/index caches and invalidate authoritative queries in both rename surfaces.
+- [x] 2.1 Enforce title-origin precedence in the shared `mergeRun` reducer. — 286a5157, 7f589ead
+- [x] 2.2 Apply successful rename responses to list/detail/index caches and invalidate authoritative queries in both rename surfaces. — 286a5157
 - [ ] 2.3 Run focused tests, prove the regression tests fail against the pre-fix code, run the full validation gate, and complete review/QA evidence.
