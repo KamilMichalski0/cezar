@@ -48,6 +48,7 @@ export function SelfUpdateDialog({
   const apply = useApplySelfUpdate()
   const [picked, setPicked] = useState<string>('')
   const data = status.data
+  const contentRef = useRef<HTMLDivElement>(null)
   const autoApplied = useRef(false)
   useEffect(() => {
     if (!autoApply || autoApplied.current || !data) return
@@ -58,7 +59,19 @@ export function SelfUpdateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent data-slot="self-update-dialog" className="sm:max-w-xl">
+      <DialogContent
+        data-slot="self-update-dialog"
+        className="sm:max-w-xl"
+        ref={contentRef}
+        // Radix focuses the first focusable element on open, which here is the close button —
+        // a highlighted X on a dialog the user opened to READ a version. Send the initial focus
+        // to the panel itself instead: it stays inside the focus trap (Tab reaches the controls,
+        // Escape still closes) but nothing is ringed until the keyboard is actually used.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault()
+          contentRef.current?.focus()
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span>cezar {data ? `v${data.version}` : ''}</span>
