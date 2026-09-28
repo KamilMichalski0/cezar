@@ -28,8 +28,10 @@
  * you cannot actually escape through, and this repo's graceful-degradation rule
  * says a new check must never become the only way to run.
  */
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { cezarHomeDir } from '../paths.ts';
 
 /** Run ids are uuids; anything else must never reach a recursive `rmSync`.
  *
@@ -41,15 +43,18 @@ function safeRunId(id: string): boolean {
   return /^[A-Za-z0-9._-]+$/.test(id) && id !== '.' && id !== '..';
 }
 
-/** Where a run's agent-scoped temp directory lives. */
-export function agentTmpDir(dataDir: string, runId: string): string {
-  return join(dataDir, 'tmp', runId);
+/** Where a run's agent-scoped temp directory lives, outside project state. */
+function projectTmpNamespace(dataDir: string): string {
+  return createHash('sha256').update(dataDir).digest('hex').slice(0, 16);
 }
 
-/** The root every per-run directory hangs off — the ONLY tree this module
- *  removes anything from (`runs/`, `runs.json` and `worktrees/` are siblings). */
-function agentTmpRoot(dataDir: string): string {
-  return join(dataDir, 'tmp');
+export function agentTmpDir(dataDir: string, runId: string, env: NodeJS.ProcessEnv = process.env): string {
+  return join(cezarHomeDir(env), 'tmp', 'agent', projectTmpNamespace(dataDir), runId);
+}
+
+/** The root every per-run directory hangs off — the only scratch tree this module removes. */
+function agentTmpRoot(dataDir: string, env: NodeJS.ProcessEnv = process.env): string {
+  return join(cezarHomeDir(env), 'tmp', 'agent', projectTmpNamespace(dataDir));
 }
 
 /** `errno` → the phrasing a human recognises from their shell. */
@@ -160,11 +165,11 @@ export function removeAgentTmpDir(dataDir: string, runId: string): void {
 /**
  * Remove every per-run directory that is not in `keepRunIds` — the startup
  * sweep, so a crash (which never reaches the terminal-transition reap) cannot
- * accumulate them forever. Confined to `<dataDir>/tmp`; sibling run state is
- * never enumerated, let alone touched. Returns the ids actually reaped.
+ * accumulate them forever. Confined to this project's hashed scratch root;
+ * project run state is never enumerated, let alone touched. Returns the ids reaped.
  */
-export function sweepAgentTmpDirs(dataDir: string, keepRunIds: Iterable<string>): string[] {
-  const root = agentTmpRoot(dataDir);
+export function sweepAgentTmpDirs(dataDir: string, keepRunIds: Iterable<string>, env: NodeJS.ProcessEnv = process.env): string[] {
+  const root = agentTmpRoot(dataDir, env);
   if (!existsSync(root)) return [];
   const keep = new Set(keepRunIds);
   const reaped: string[] = [];

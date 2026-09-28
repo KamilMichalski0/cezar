@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -42,7 +42,7 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
   it('gives the run its own directory and creates it before the backend spawns', () => {
     const env = agentTmpEnv(dataDir, 'run-a', {});
     expect(env.TMPDIR).toBe(agentTmpDir(dataDir, 'run-a'));
-    expect(env.TMPDIR).toBe(join(dataDir, 'tmp', 'run-a'));
+    expect(env.TMPDIR).not.toContain(dataDir);
     expect(existsSync(env.TMPDIR as string)).toBe(true);
   });
 
@@ -60,9 +60,10 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
   });
 
   it('fails with a named, actionable error when the directory cannot be created', () => {
-    // `<dataDir>/tmp` occupied by a FILE — mkdir cannot make the run's directory
-    // under it. Deterministic and portable, unlike simulating a quota.
-    writeFileSync(join(dataDir, 'tmp'), 'not a directory', 'utf8');
+    // The hashed project namespace occupied by a FILE — mkdir cannot make the
+    // run's directory. Deterministic and portable, unlike simulating a quota.
+    mkdirSync(dirname(dirname(agentTmpDir(dataDir, 'run-c'))), { recursive: true });
+    writeFileSync(dirname(agentTmpDir(dataDir, 'run-c')), 'not a directory', 'utf8');
     let thrown: unknown;
     try {
       agentTmpEnv(dataDir, 'run-c', {});
@@ -71,7 +72,7 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
     }
     expect(thrown).toBeInstanceOf(AgentTempDirError);
     expect((thrown as Error).message).toContain('agent temp directory is not writable');
-    expect((thrown as Error).message).toContain(join(dataDir, 'tmp', 'run-c'));
+    expect((thrown as Error).message).toContain(agentTmpDir(dataDir, 'run-c'));
     // The remedy names the opt-out, so the message alone is enough to act on.
     expect((thrown as Error).message).toContain('CEZ_AGENT_TMPDIR=0');
   });
@@ -123,7 +124,8 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
     });
 
     it('is not fooled by an unusable directory it would otherwise have minted', () => {
-      writeFileSync(join(dataDir, 'tmp'), 'not a directory', 'utf8');
+      mkdirSync(dirname(dirname(agentTmpDir(dataDir, 'run-h'))), { recursive: true });
+      writeFileSync(dirname(agentTmpDir(dataDir, 'run-h')), 'not a directory', 'utf8');
       expect(agentTmpEnv(dataDir, 'run-h', { CEZ_AGENT_TMPDIR: '0' })).toEqual({});
     });
 
