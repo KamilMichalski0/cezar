@@ -122,12 +122,14 @@ jobs:
           node-version: 20
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
+          # Pinned by SHA, so the action cannot read the toolchain from its own ref name.
+          toolchain: stable
           targets: ${{ matrix.target }}
 
       - name: Cache cargo
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: ${{ env.DESKTOP_DIR }}/src-tauri
 
@@ -154,7 +156,7 @@ jobs:
           echo "updater=$HAS_UPDATER_KEY" >> "$GITHUB_OUTPUT"
 
       - name: Build and upload with tauri-action
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Updater artifacts (`.sig` + the manifest) are produced only when the key is present;
