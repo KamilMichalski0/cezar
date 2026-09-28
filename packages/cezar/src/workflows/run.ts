@@ -4254,10 +4254,12 @@ export class RunManager {
       try {
         checkResult = await this.runCheckStep(state, step, emit);
       } finally {
-        state.checkInProgress = false;
         if (checkpointSafe && state.cwd !== this.repoRoot) {
           await captureCheckArtifacts(state.cwd, state.autosaveExcludedPaths);
         }
+        // Keep the periodic timer fenced until the ownership snapshot is complete;
+        // captureCheckArtifacts yields while reading git status.
+        state.checkInProgress = false;
       }
       const { ok, output } = checkResult;
       if (state.cancelled) break;
