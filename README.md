@@ -1,13 +1,17 @@
+<p align="center">
+  <img src="docs/brand/cezar-icon-black.svg" alt="" width="104" />
+</p>
+
 <div align="center">
   <h1>Cezar - orchestrate hundreds of AI coding agents, 24/7.</h1>
 </div>
 
-<h4 align="center">
+<p align="center">
   <a href="https://www.youtube.com/watch?v=nNLJm9gArnE">Demo</a>&nbsp;·
   <a href="#quick-start">Quick start</a>&nbsp;·
   <a href="docs/reference.md">Docs</a>&nbsp;·
   <a href="https://github.com/open-mercato/cezar/issues">Issues</a>
-</h4>
+</p>
 
 <p align="center">
   English | <a href="README.zh-CN.md">简体中文</a> | <a href="README.zh-TW.md">繁體中文</a>
