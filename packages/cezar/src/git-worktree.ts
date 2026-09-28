@@ -363,13 +363,21 @@ export async function autosaveCommit(
 
 /** Return paths currently changed in the worktree, including untracked files. */
 export async function worktreeChangedPaths(dir: string): Promise<string[]> {
-  const status = await git(dir, ['status', '--porcelain=v1', '-z']);
+  const status = await git(dir, ['status', '--porcelain=v1', '--untracked-files=all', '-z']);
   if (!status.ok) return [];
-  return status.stdout
-    .split('\0')
-    .filter(Boolean)
-    .map((entry) => entry.slice(3))
-    .filter(Boolean);
+  const records = status.stdout.split('\0').filter(Boolean);
+  const paths: string[] = [];
+  for (let i = 0; i < records.length; i++) {
+    const entry = records[i] as string;
+    paths.push(entry.slice(3));
+    // Porcelain -z emits the destination and source paths of renames/copies as
+    // adjacent NUL records; the second record has no XY prefix.
+    if (entry[0] === 'R' || entry[0] === 'C' || entry[1] === 'R' || entry[1] === 'C') {
+      const source = records[++i];
+      if (source) paths.push(source);
+    }
+  }
+  return paths.filter(Boolean);
 }
 
 /**
