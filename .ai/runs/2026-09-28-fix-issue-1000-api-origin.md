@@ -18,8 +18,8 @@ Ensure dispatched agents inherit an API URL reachable on the interface where the
 
 ### Phase 1: Reproduce and implement
 
-- [ ] 1.1 Extract/test host-aware API URL formatting and port-probe host selection.
-- [ ] 1.2 Wire the helpers into cockpit startup and preserve loopback defaults.
+- [x] 1.1 Extract/test host-aware API URL formatting and port-probe host selection. — 0b5dc705
+- [x] 1.2 Wire the helpers into cockpit startup and preserve loopback defaults. — 0b5dc705
 
 ### Phase 2: Validate and publish
 
@@ -36,8 +36,8 @@ The bind host may be an IPv6 literal or an unspecified wildcard address; URL for
 
 ### Phase 1: Reproduce and implement
 
-- [ ] 1.1 Extract/test host-aware API URL formatting and port-probe host selection.
-- [ ] 1.2 Wire the helpers into cockpit startup and preserve loopback defaults.
+- [x] 1.1 Extract/test host-aware API URL formatting and port-probe host selection. — 0b5dc705
+- [x] 1.2 Wire the helpers into cockpit startup and preserve loopback defaults. — 0b5dc705
 
 ### Phase 2: Validate and publish
 
