@@ -32,6 +32,13 @@ Ensure workflow check commands cannot be folded into the run's autosave commit, 
 - [x] 3.1 Run targeted tests, prove the regression test fails against the pre-fix code, then passes with the fix. — 90962f8e
 - [ ] 3.2 Run the configured validation gate and authoritative PR review.
 
+## Evidence
+
+- Red-before-fix: the new targeted regression failed because `run finalize` autosave contained `debug_test.txt`.
+- Green-after-fix: focused workflow/autosave tests passed (144 tests), with both tracked and untracked check artifacts removed and agent `notes.md` preserved.
+- Passed: `npm run typecheck`, `npm run test:unit`, `npm run build`, `npm run test:package`.
+- Full `npm test` was attempted twice with task-session variables unset; 7 unrelated Git/server/automation tests fail in the shared concurrent environment. GitHub rejects self-approval, so review evidence was posted as a PR comment and the PR remains draft.
+
 ## Risks
 
 The cleanup must preserve agent-authored files and avoid broad deletion outside the isolated task worktree. It will therefore run only after an agent autosave checkpoint and use Git's worktree-local reset/clean semantics.
