@@ -14,13 +14,13 @@ Non-goals:
 
 ### Phase 1: Reproduce and define the receipt invariant
 
-- [ ] 1.1 Add a regression test showing a receipt for one event remains a duplicate after the automation revision changes.
-- [ ] 1.2 Run the regression against the unmodified implementation and record the failing result.
+- [x] 1.1 Add a regression test showing a receipt for one event remains a duplicate after the automation revision changes. — a8c8bd4f
+- [x] 1.2 Run the regression against the unmodified implementation and record the failing result. — pre-fix Vitest failed: expected undefined, received a new revision-2 receipt
 
 ### Phase 2: Make receipt identity revision-independent
 
-- [ ] 2.1 Canonicalize receipt lookup from automation id and event id, including legacy persisted receipt keys.
-- [ ] 2.2 Add focused tests for current and legacy receipt formats and verify no duplicate launch after an edit.
+- [x] 2.1 Canonicalize receipt lookup from automation id and event id, including legacy persisted receipt keys. — a8c8bd4f
+- [x] 2.2 Add focused tests for current and legacy receipt formats and verify no duplicate launch after an edit. — a8c8bd4f
 
 ### Phase 3: Validate and review
 
