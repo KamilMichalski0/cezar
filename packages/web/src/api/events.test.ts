@@ -182,6 +182,14 @@ describe('mergeRun', () => {
       titleOrigin: 'user',
     }))).toMatchObject({ title: 'My task', titleSummary: 'My task', titleOrigin: 'user' })
   })
+
+  it('keeps a user rename ahead of a stale marker frame', () => {
+    expect(mergeRun(run('r1', { title: 'My task', titleOrigin: 'user' }), run('r1', {
+      title: 'PR #12',
+      titleSummary: 'PR #12',
+      titleOrigin: 'marker',
+    }))).toMatchObject({ title: 'My task', titleOrigin: 'user' })
+  })
 })
 
 describe('applyRunDeleted', () => {

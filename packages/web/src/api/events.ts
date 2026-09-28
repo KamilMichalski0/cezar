@@ -174,9 +174,9 @@ export function mergeRun(previous: ApiRun | undefined, run: RunRecord): ApiRun {
   // A reconnect can replay a run frame queued before the user renamed the task. The server's
   // titleOrigin is the ownership bit: auto (and legacy missing) titles may not erase user/marker
   // titles, while all other fields still come from the live frame.
-  const protectedTitle = previous.titleOrigin === 'user' || previous.titleOrigin === 'marker'
-  const incomingOwnsTitle = run.titleOrigin === 'user' || run.titleOrigin === 'marker'
-  const title = protectedTitle && !incomingOwnsTitle
+  const titleOwnership = (origin: RunRecord['titleOrigin']): number =>
+    origin === 'user' ? 2 : origin === 'marker' ? 1 : 0
+  const title = titleOwnership(previous.titleOrigin) > titleOwnership(run.titleOrigin)
     ? { title: previous.title, titleSummary: previous.titleSummary, titleOrigin: previous.titleOrigin }
     : {}
 
