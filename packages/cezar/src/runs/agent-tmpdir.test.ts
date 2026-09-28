@@ -46,6 +46,26 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
     expect(existsSync(env.TMPDIR as string)).toBe(true);
   });
 
+  it('honors an explicit CEZ_HOME and keeps it outside the checkout', () => {
+    const home = mkdtempSync(join(realpathSync(tmpdir()), 'cez-agent-home-'));
+    const env = { CEZ_HOME: home };
+    try {
+      expect(agentTmpEnv(dataDir, 'explicit-home', env).TMPDIR)
+        .toBe(agentTmpDir(dataDir, 'explicit-home', env));
+      expect(agentTmpDir(dataDir, 'explicit-home', env)).toContain(home);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back outside the checkout when CEZ_HOME is inside it', () => {
+    const inside = join(dataDir, 'state');
+    const env = { CEZ_HOME: inside };
+    const path = agentTmpDir(dataDir, 'inside-home', env);
+    expect(path.startsWith(`${dataDir}/`)).toBe(false);
+    expect(agentTmpEnv(dataDir, 'inside-home', env).TMPDIR).toBe(path);
+  });
+
   // A tool that reads TMP (or TEMP) would otherwise follow the host value straight
   // back to the exhausted directory this whole change exists to escape.
   it('sets all three spellings, so nothing falls back to the host value', () => {

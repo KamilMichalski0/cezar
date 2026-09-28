@@ -1,4 +1,5 @@
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeEach } from 'vitest'
 
@@ -20,9 +21,18 @@ for (const key of [
 // os.tmpdir() follows TMPDIR, which a dispatched task may pin inside its
 // checkout. Vitest itself must never use that path: Git commands in temporary
 // repositories discover the checkout through it.
-const testTempRoot = process.platform === 'win32'
-  ? (process.env.SystemDrive ? `${process.env.SystemDrive}\\Temp` : 'C:\\Temp')
-  : '/tmp'
+const inheritedTemp = {
+  TMPDIR: process.env.TMPDIR,
+  TEMP: process.env.TEMP,
+  TMP: process.env.TMP,
+}
+delete process.env.TMPDIR
+delete process.env.TEMP
+delete process.env.TMP
+const testTempRoot = tmpdir()
+for (const [key, value] of Object.entries(inheritedTemp)) {
+  if (value !== undefined) process.env[key] = value
+}
 process.env.TMPDIR = testTempRoot
 process.env.TEMP = testTempRoot
 process.env.TMP = testTempRoot

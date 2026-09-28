@@ -31,7 +31,8 @@
  */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
+import { tmpdir } from 'node:os';
 import { cezarHomeDir } from '../paths.ts';
 
 /** Run ids are uuids; anything else must never reach a recursive `rmSync`.
@@ -49,13 +50,30 @@ function projectTmpNamespace(dataDir: string): string {
   return createHash('sha256').update(dataDir).digest('hex').slice(0, 16);
 }
 
+function effectiveEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...process.env, ...env };
+}
+
+function isInside(root: string, path: string): boolean {
+  const rel = relative(root, path);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
+
+/** Prefer CEZ_HOME, but never place agent scratch inside the checkout it protects. */
+function agentTmpBase(dataDir: string, env: NodeJS.ProcessEnv): string {
+  const preferred = join(cezarHomeDir(env), 'tmp', 'agent');
+  if (!isInside(dataDir, preferred)) return preferred;
+  const fallback = join(tmpdir(), 'cez-agent');
+  return isInside(dataDir, fallback) ? join('/tmp', 'cez-agent') : fallback;
+}
+
 export function agentTmpDir(dataDir: string, runId: string, env: NodeJS.ProcessEnv = process.env): string {
-  return join(cezarHomeDir(env), 'tmp', 'agent', projectTmpNamespace(dataDir), runId);
+  return join(agentTmpBase(dataDir, effectiveEnv(env)), projectTmpNamespace(dataDir), runId);
 }
 
 /** The root every per-run directory hangs off — the only scratch tree this module removes. */
 function agentTmpRoot(dataDir: string, env: NodeJS.ProcessEnv = process.env): string {
-  return join(cezarHomeDir(env), 'tmp', 'agent', projectTmpNamespace(dataDir));
+  return join(agentTmpBase(dataDir, effectiveEnv(env)), projectTmpNamespace(dataDir));
 }
 
 /** `errno` → the phrasing a human recognises from their shell. */
@@ -139,7 +157,7 @@ export function agentTmpEnv(
   env: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
   if (!agentTmpDirEnabled(env)) return {};
-  const dir = agentTmpDir(dataDir, runId);
+  const dir = agentTmpDir(dataDir, runId, env);
   try {
     mkdirSync(dir, { recursive: true });
   } catch (err) {
