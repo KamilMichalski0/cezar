@@ -370,6 +370,8 @@ interface ActiveRun {
   monitoringWakeIntervalMinutes?: number;
   monitoringWakeups?: number;
   autosaveTimer?: NodeJS.Timeout;
+  /** Paths changed by verification commands; retained dirty and excluded from autosaves. */
+  autosaveExcludedPaths: Set<string>;
   cancellationTimer?: NodeJS.Timeout;
   /* The screenshot counter lives on `RunManager.queuedImageSeq` (#472), keyed by
    * run id — a queued run persists attachments with no `ActiveRun` at all. */
@@ -3496,6 +3498,7 @@ export class RunManager {
       cwd,
       autonomous: record?.autonomous === true,
       autoContinues: 0,
+      autosaveExcludedPaths: new Set(),
     };
     this.active.set(runId, state);
     this.starting.delete(runId);
@@ -3940,6 +3943,7 @@ export class RunManager {
       cwd: this.repoRoot,
       autonomous: input.autonomous === true,
       autoContinues: 0,
+      autosaveExcludedPaths: new Set(),
     };
     this.active.set(runId, state);
     this.starting.delete(runId);
@@ -4110,7 +4114,6 @@ export class RunManager {
     this.prepareAutomationsSession(state);
     const retriesUsed = new Map<string, number>();
     let checkFailure: string | null = null;
-    const checkChangedPaths = new Set<string>();
     let runError: string | null = null;
     // `startRun` already persisted the task's attachments so a queued bubble can render them
     // (#612). Reuse those files for the agent-facing path note instead of minting
@@ -4218,10 +4221,10 @@ export class RunManager {
       const checkpoint =
         state.cwd === this.repoRoot
           ? 'nothing-to-do'
-          : await autosaveCommit(state.cwd, 'turn end', [...checkChangedPaths]);
+          : await autosaveCommit(state.cwd, 'turn end', [...state.autosaveExcludedPaths]);
       const { ok, output } = await this.runCheckStep(state, step, emit);
       if (state.cwd !== this.repoRoot) {
-        for (const path of await worktreeChangedPaths(state.cwd)) checkChangedPaths.add(path);
+        for (const path of await worktreeChangedPaths(state.cwd)) state.autosaveExcludedPaths.add(path);
       }
       if (state.cancelled) break;
       if (ok) {
@@ -4270,7 +4273,7 @@ export class RunManager {
     // Final autosave: the branch always ends holding the finished state.
     this.clearAutosaveTimer(state);
     if (!state.cancelled && this.active.get(runId) === state && state.cwd !== this.repoRoot) {
-      await autosaveCommit(state.cwd, 'run finalize', [...checkChangedPaths]);
+      await autosaveCommit(state.cwd, 'run finalize', [...state.autosaveExcludedPaths]);
     }
 
     // The cancellation grace timer may have retired this owner while the async
@@ -5474,7 +5477,7 @@ export class RunManager {
     if (state.cwd === this.repoRoot || state.autosaveTimer) return;
     state.autosaveTimer = setInterval(() => {
       if (this.active.get(runId) !== state || state.cancelled) return;
-      void autosaveCommit(state.cwd, 'periodic');
+      void autosaveCommit(state.cwd, 'periodic', [...state.autosaveExcludedPaths]);
     }, AUTOSAVE_INTERVAL_MS);
     state.autosaveTimer.unref?.();
   }
