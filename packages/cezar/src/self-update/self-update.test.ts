@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { activate, activeId, detectInstallKind, installId, listInstalled, versionEntry, versionsDir, writeManifest } from './layout.ts';
+import { activate, activeId, assertSafeId, detectInstallKind, installId, listInstalled, versionDir, versionEntry, versionsDir, writeManifest } from './layout.ts';
 import { fetchPackageDocument, registryPath } from './registry.ts';
 import { restartArgs } from './restart.ts';
 import { classifyVersion, compareVersions, isNewer } from './semver.ts';
@@ -27,6 +27,14 @@ describe('semver', () => {
     expect(classifyVersion('0.11.1-nightly.20260924.49')).toBe('nightly');
     expect(classifyVersion('0.9.2-pr743.1156.2')).toBe('preview');
     expect(classifyVersion('0.1.5-develop.124')).toBe('preview');
+  });
+
+  // An unparseable version must never reach the picker as a release: `status()` keeps only
+  // non-preview entries, so `preview` is what drops registry junk instead of offering it.
+  it('treats an unparseable version as a preview, never as a stable release', () => {
+    expect(classifyVersion('not-a-version')).toBe('preview');
+    expect(classifyVersion('')).toBe('preview');
+    expect(classifyVersion('0.11')).toBe('preview');
   });
 });
 
@@ -70,6 +78,31 @@ describe('managed layout', () => {
   it('derives the install id from the source', () => {
     expect(installId('0.11.1', 'registry')).toBe('0.11.1');
     expect(installId('0.11.1', 'local')).toBe('0.11.1+local');
+  });
+
+  // `versionDir` is the path `installSpec` rm -rf's before it renames staging into place, so an
+  // id that climbs out of `versions/` is a wipe of whatever it lands on. The wire schema's
+  // charset alone still admits `..`; the layout has to refuse it itself.
+  it('refuses a version id that could escape the versions directory', () => {
+    for (const id of ['..', '.', '.hidden', '0.11.1/../..', 'a..b', '']) {
+      expect(() => assertSafeId(id)).toThrow(/invalid version id/);
+      expect(() => versionDir(id, env)).toThrow(/invalid version id/);
+    }
+    for (const id of ['0.12.0', '0.12.0+local', '0.12.0-nightly.20260927.60', '0.9.2-pr743.1156.2']) {
+      expect(assertSafeId(id)).toBe(id);
+      expect(versionDir(id, env)).toBe(join(versionsDir(env), id));
+    }
+  });
+
+  // A bad id must not take the listing down with it. `versionDir` throws for these names now,
+  // so the graceful skip has to come from `readManifest`'s own catch — none of them is
+  // dot-prefixed, so the pre-existing `startsWith('.')` skip cannot be what saves the listing.
+  it('skips an unsafe directory name instead of throwing out of listInstalled', () => {
+    fakeInstall('0.11.0', '0.11.0', 'registry');
+    for (const junk of ['a..b', '-weird', 'has space', '0.1.0;rm']) {
+      mkdirSync(join(versionsDir(env), junk), { recursive: true });
+    }
+    expect(listInstalled(env).map((entry) => entry.id)).toEqual(['0.11.0']);
   });
 
   it('tells install kinds apart by where the entry file lives', () => {

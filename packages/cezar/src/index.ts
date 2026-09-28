@@ -341,9 +341,6 @@ async function serveCommand(
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
-  // A supervisor that names itself (the desktop shell sets CEZ_SUPERVISOR_PID) may die without
-  // a chance to kill us — a force-quit, a crash. Nobody would find a headless cockpit still
-  // holding the port, so follow the parent down: `kill(pid, 0)` only probes for existence.
   // Under the desktop shell a managed install may exist without launchers (the shell installs
   // cezar itself on first launch, spec 2026-09-25-desktop-distribution): write them so
   // `cezar` in a terminal works too. Idempotent; never touches the shell profile.
@@ -354,14 +351,25 @@ async function serveCommand(
       // A read-only home is not a reason to refuse to serve.
     }
   }
+  // A supervisor that names itself (the desktop shell sets CEZ_SUPERVISOR_PID) may die without
+  // a chance to kill us — a force-quit, a crash. Nobody would find a headless cockpit still
+  // holding the port, so follow the parent down: `kill(pid, 0)` only probes for existence.
   const supervisorPid = Number(process.env.CEZ_SUPERVISOR_PID);
   if (Number.isInteger(supervisorPid) && supervisorPid > 0) {
     // Two independent signals, because either alone has a hole: `kill(pid, 0)` still succeeds
     // for an unreaped zombie or a reused pid, and the shell exec's us so our parent IS the
     // supervisor — when it dies we are re-parented to pid 1.
+    //
+    // Re-parenting only speaks when we HAD a parent to lose. A cockpit already at ppid 1 on
+    // boot — a detached launchd/systemd supervisor that still sets CEZ_SUPERVISOR_PID — would
+    // otherwise read its own starting state as "the supervisor is gone" on the first tick and
+    // shut down two seconds after it came up. There, `kill(pid, 0)` is the only honest signal.
     const initialPpid = process.ppid;
+    const watchesReparenting = initialPpid > 1;
     setInterval(() => {
-      let gone = process.ppid !== initialPpid || process.ppid === 1;
+      // `!== initialPpid` already covers re-parenting to 1, because `watchesReparenting` means
+      // we did not start there.
+      let gone = watchesReparenting && process.ppid !== initialPpid;
       if (!gone) {
         try {
           process.kill(supervisorPid, 0);

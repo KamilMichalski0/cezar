@@ -64,6 +64,9 @@ export function isNewer(candidate: string, current: string): boolean {
 /** Which dist-tag family a published version belongs to, from its prerelease identifiers. */
 export function classifyVersion(version: string): VersionChannel {
   const parsed = parseVersion(version);
-  if (!parsed || parsed.pre.length === 0) return 'stable';
+  // Unparseable is `preview`, not `stable`: the picker filters previews out, so a junk entry in
+  // the registry document is dropped instead of being offered as a release to install.
+  if (!parsed) return 'preview';
+  if (parsed.pre.length === 0) return 'stable';
   return parsed.pre[0] === 'nightly' ? 'nightly' : 'preview';
 }
