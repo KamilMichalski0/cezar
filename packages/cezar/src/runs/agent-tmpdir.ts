@@ -59,12 +59,27 @@ function isInside(root: string, path: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
 }
 
+/** Read the platform temp root without inheriting a checkout-local temp override. */
+function platformTmpDir(): string {
+  const saved = { TMPDIR: process.env.TMPDIR, TEMP: process.env.TEMP, TMP: process.env.TMP };
+  delete process.env.TMPDIR;
+  delete process.env.TEMP;
+  delete process.env.TMP;
+  try {
+    return tmpdir();
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 /** Prefer CEZ_HOME, but never place agent scratch inside the checkout it protects. */
 function agentTmpBase(dataDir: string, env: NodeJS.ProcessEnv): string {
   const preferred = join(cezarHomeDir(env), 'tmp', 'agent');
   if (!isInside(dataDir, preferred)) return preferred;
-  const fallback = join(tmpdir(), 'cez-agent');
-  return isInside(dataDir, fallback) ? join('/tmp', 'cez-agent') : fallback;
+  return join(platformTmpDir(), 'cez-agent');
 }
 
 export function agentTmpDir(dataDir: string, runId: string, env: NodeJS.ProcessEnv = process.env): string {
