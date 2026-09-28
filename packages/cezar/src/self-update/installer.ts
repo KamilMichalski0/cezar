@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
-import { installId, PACKAGE_NAME, versionDir, versionEntry, versionsDir, writeManifest } from './layout.ts';
+import { assertSafeId, installId, PACKAGE_NAME, versionDir, versionEntry, versionsDir, writeManifest } from './layout.ts';
 
 const packageJsonSchema = z.object({ name: z.string(), version: z.string().min(1) }).passthrough();
 
@@ -86,7 +86,9 @@ async function installSpec(
   opts: InstallOptions,
 ): Promise<void> {
   const env = opts.env ?? process.env;
-  const staging = join(versionsDir(env), `.staging-${id}-${process.pid}`);
+  // Both callers validate before they get here, but the staging path is built from `id` and
+  // recursively removed — make that invariant structural rather than a property of call order.
+  const staging = join(versionsDir(env), `.staging-${assertSafeId(id)}-${process.pid}`);
   rmSync(staging, { recursive: true, force: true });
   mkdirSync(staging, { recursive: true });
   try {

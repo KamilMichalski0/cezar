@@ -11,7 +11,7 @@ import { loadWorkspaceConfig, mergeWriteWorkspaceConfig } from '../workspace/con
 import { installFromLocal, installFromRegistry } from './installer.ts';
 import { activate, detectInstallKind, findInstalled, listInstalled, packageRootOf, type InstallKind } from './layout.ts';
 import { distTagFor, RegistryCache, type PackageDocument } from './registry.ts';
-import { isNewer } from './semver.ts';
+import { classifyVersion, isNewer } from './semver.ts';
 
 const LOG_CAP = 200;
 
@@ -120,6 +120,39 @@ export class SelfUpdateService {
       job: this.job,
       activeRuns: this.deps.activeRuns?.() ?? 0,
     };
+  }
+
+  /**
+   * Whether a HOSTED cockpit may apply `target` — hosted updates are forward-only, and "forward"
+   * has to mean forward in TIME, not merely in semver order. cezar's nightlies are versioned
+   * `<next-version>-nightly.<date>.<run>`, so every `0.13.0-nightly.*` outranks every later
+   * `0.12.x` patch: a semver-only rule would let a hosted cockpit on 0.12.1 install a 0.13.0
+   * nightly cut months earlier and restart into code that predates the guards this rule exists
+   * to protect. The registry's publish dates are the honest signal; when it cannot supply them
+   * (offline, or a version it does not list) the residual risk is a prerelease outranking a
+   * release, so that shape is refused outright.
+   *
+   * Returns the refusal reason, or null when the target may be applied.
+   */
+  async forwardOnlyRefusal(target: string): Promise<string | null> {
+    const running = this.deps.version;
+    const suffix = 'apply it on the host itself (`cezar use <id>`)';
+    if (!isNewer(target, running)) {
+      return `a hosted cockpit can only update forward — ${target} is not newer than the running ${running}; ${suffix}`;
+    }
+    const doc = this.registry.current() ?? (await this.registry.get());
+    const publishedAt = (version: string) => doc?.versions.find((entry) => entry.version === version)?.publishedAt ?? null;
+    const targetAt = publishedAt(target);
+    const runningAt = publishedAt(running);
+    if (targetAt && runningAt) {
+      return targetAt >= runningAt
+        ? null
+        : `a hosted cockpit can only update forward — ${target} was published before the running ${running}; ${suffix}`;
+    }
+    if (classifyVersion(target) !== 'stable' && classifyVersion(running) === 'stable') {
+      return `a hosted cockpit can only update forward — ${target} is a prerelease and the registry gave no publish date to check it against; ${suffix}`;
+    }
+    return null;
   }
 
   capability(): { canSelfUpdate: boolean; reason?: string } {

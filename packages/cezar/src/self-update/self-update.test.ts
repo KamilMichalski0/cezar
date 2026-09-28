@@ -94,11 +94,14 @@ describe('managed layout', () => {
     }
   });
 
-  // A bad id must not take the listing down with it: a stray directory under `versions/` is
-  // skipped, and the real installs beside it still answer.
+  // A bad id must not take the listing down with it. `versionDir` throws for these names now,
+  // so the graceful skip has to come from `readManifest`'s own catch — none of them is
+  // dot-prefixed, so the pre-existing `startsWith('.')` skip cannot be what saves the listing.
   it('skips an unsafe directory name instead of throwing out of listInstalled', () => {
     fakeInstall('0.11.0', '0.11.0', 'registry');
-    mkdirSync(join(versionsDir(env), '.junk'), { recursive: true });
+    for (const junk of ['a..b', '-weird', 'has space', '0.1.0;rm']) {
+      mkdirSync(join(versionsDir(env), junk), { recursive: true });
+    }
     expect(listInstalled(env).map((entry) => entry.id)).toEqual(['0.11.0']);
   });
 

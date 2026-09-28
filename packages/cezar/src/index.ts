@@ -367,7 +367,9 @@ async function serveCommand(
     const initialPpid = process.ppid;
     const watchesReparenting = initialPpid > 1;
     setInterval(() => {
-      let gone = watchesReparenting && (process.ppid !== initialPpid || process.ppid === 1);
+      // `!== initialPpid` already covers re-parenting to 1, because `watchesReparenting` means
+      // we did not start there.
+      let gone = watchesReparenting && process.ppid !== initialPpid;
       if (!gone) {
         try {
           process.kill(supervisorPid, 0);

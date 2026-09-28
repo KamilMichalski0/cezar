@@ -94,7 +94,6 @@ import { discoverSkills } from '../skills.ts';
 import { SkillsUpdateConflictError, SkillsUpdateCoordinator, SkillsUpdateService, type SkillsUpdateState } from '../skills-update.ts';
 import { selfUpdateApplyRequestSchema, selfUpdateChannelRequestSchema } from '@open-mercato/cezar-contract';
 import { SelfUpdateBusyError, SelfUpdateService } from '../self-update/service.ts';
-import { isNewer } from '../self-update/semver.ts';
 import { getTeamSkillsCached, refreshTeamSkills, waitForTeamSkills } from '../skills-remote.ts';
 import { appendHandoffHeartbeat, handoffProgressExcerpt, readHandoff } from '../handoff.ts';
 import { markStarted, onTodosChanged, readTodos, removeTodo, todoTaskText, type TodoItem } from '../todos.ts';
@@ -2987,12 +2986,12 @@ export function createApp(deps: ServerDeps) {
       // RCE path — lives in the running version, so a downgrade to a release that predates them
       // re-opens exactly what they close, through a route those guards never get to see. A
       // local cockpit keeps the full picker, downgrades included: there is no boundary left to
-      // escalate across when the caller already owns the machine.
-      if (!capabilities().localHandoff && !isNewer(target, deps.version)) {
-        return c.json(
-          { error: 'a hosted cockpit can only update forward — apply an older version on the host itself (`cezar use <id>`)' },
-          409,
-        );
+      // escalate across when the caller already owns the machine. `forwardOnlyRefusal` decides
+      // what "forward" means — publish time, not just semver order, because a nightly for the
+      // next minor outranks every later patch of the current one.
+      if (!capabilities().localHandoff) {
+        const refusal = await selfUpdate.forwardOnlyRefusal(target);
+        if (refusal) return c.json({ error: refusal }, 409);
       }
       try {
         selfUpdate.apply(target);
