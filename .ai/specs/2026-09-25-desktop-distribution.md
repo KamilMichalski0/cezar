@@ -40,13 +40,16 @@ security fix lands, or the icon/name/signing identity changes. Never for a cezar
    | Windows | `cezar-windows-x86_64-setup.exe` (NSIS) |
    | Linux | `cezar-linux-x86_64.AppImage` (+ `.deb` versioned) |
 
-   Stable names are the contract: `https://github.com/open-mercato/cezar/releases/latest/download/<asset>`
+   Stable names are the contract: `https://github.com/open-mercato/cezar/releases/download/desktop-latest/<asset>`
    always resolves to the newest shell, so the landing page and package-manager manifests never
-   change when a version ships.
+   change when a version ships. `desktop-latest` is a ROLLING release the publish job refreshes;
+   GitHub's own `releases/latest/download/…` cannot be used, because the repo's "latest" release
+   is cezar's `v*` release, which carries no installers.
 3. **publish** — renames tauri-action's `latest.json` to **`desktop-latest.json`** (the name
    the shells poll; namespaced so a future cezar manifest on the same page cannot collide),
    flips the draft to published with `--latest=false` (cezar's `v*` releases stay the repo's
-   "latest"), and writes a summary with the stable links and loud warnings for anything unsigned.
+   "latest"), copies the stable-named installers and `desktop-latest.json` onto the rolling
+   `desktop-latest` release (moving its tag to the released commit), and writes a summary with the stable links and loud warnings for anything unsigned.
 
 `createUpdaterArtifacts` is passed **only in CI** (`--config`), never in the checked-in
 config, so a local `tauri build` does not demand the signing key.

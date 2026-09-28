@@ -227,6 +227,37 @@ jobs:
           fi
           gh release edit "$TAG" --draft=false --latest=false --repo "$REPO"
 
+      # `releases/latest/download/…` follows the repo's "latest" release, and that is cezar's own
+      # `v*` release — which carries no installers. The permanent URLs therefore hang off a
+      # ROLLING release, `desktop-latest`, whose tag and assets are replaced on every shell release.
+      - name: Refresh the rolling desktop-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          mkdir rolling
+          for f in cezar-macos-aarch64.dmg cezar-macos-x86_64.dmg cezar-windows-x86_64-setup.exe cezar-linux-x86_64.AppImage desktop-latest.json; do
+            gh release download "$TAG" --repo "$REPO" --pattern "$f" --dir rolling || echo "::warning::$f is not on $TAG"
+          done
+          if [ -z "$(ls -A rolling)" ]; then
+            echo "::error::nothing to publish under desktop-latest"
+            exit 1
+          fi
+          SHA=$(gh api "repos/$REPO/commits/$TAG" --jq .sha)
+          if gh release view desktop-latest --repo "$REPO" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$REPO/git/refs/tags/desktop-latest" -f sha="$SHA" -F force=true >/dev/null
+            gh release edit desktop-latest --repo "$REPO" --title "cezar desktop (latest: v$VERSION)" \
+              --notes "Rolling pointer to the newest desktop release, [$TAG](https://github.com/$REPO/releases/tag/$TAG). Download links on this page never change." \
+              --latest=false
+          else
+            gh release create desktop-latest --repo "$REPO" --target "$SHA" --title "cezar desktop (latest: v$VERSION)" \
+              --notes "Rolling pointer to the newest desktop release, [$TAG](https://github.com/$REPO/releases/tag/$TAG). Download links on this page never change." \
+              --latest=false
+          fi
+          gh release upload desktop-latest rolling/* --clobber --repo "$REPO"
+
       - name: Write workflow summary
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -243,7 +274,7 @@ jobs:
             echo "| Platform | Stable download |"
             echo "|---|---|"
             for f in cezar-macos-aarch64.dmg cezar-macos-x86_64.dmg cezar-windows-x86_64-setup.exe cezar-linux-x86_64.AppImage; do
-              echo "| \`$f\` | https://github.com/${REPO}/releases/latest/download/$f |"
+              echo "| \`$f\` | https://github.com/${REPO}/releases/download/desktop-latest/$f |"
             done
             echo ""
             [ "$HAS_APPLE" = "true" ] || echo "⚠️ macOS builds are UNSIGNED (no APPLE_* secrets) — Gatekeeper will refuse them. Not fit for a landing page."
