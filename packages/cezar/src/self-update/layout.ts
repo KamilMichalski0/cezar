@@ -14,7 +14,7 @@
  * rebuilds it — state, never configuration.
  */
 
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { z } from 'zod';
 
@@ -108,13 +108,16 @@ export function findInstalled(target: string, env: NodeJS.ProcessEnv = process.e
 /** The id `current` points at, or null when nothing is activated. */
 export function activeId(env: NodeJS.ProcessEnv = process.env): string | null {
   const link = join(versionsDir(env), CURRENT_LINK);
+  // Read, never check-then-read: `readlink` on something that is not a link fails, and that
+  // failure is what selects the text-file fallback.
   try {
-    const stat = lstatSync(link);
-    if (stat.isSymbolicLink()) return basename(readlinkSync(link));
-    if (stat.isFile()) return readFileSync(link, 'utf8').trim() || null;
-    return null;
+    return basename(readlinkSync(link));
   } catch {
-    return null;
+    try {
+      return readFileSync(link, 'utf8').trim() || null;
+    } catch {
+      return null;
+    }
   }
 }
 

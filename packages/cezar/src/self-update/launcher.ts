@@ -7,7 +7,7 @@
  * predates the cockpit's update dialog (this PoC's own situation).
  */
 
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -101,7 +101,13 @@ export function ensurePathHook(dir: string, env: NodeJS.ProcessEnv = process.env
   const shell = env.SHELL ?? '';
   const rc = shell.endsWith('/zsh') ? '.zshrc' : shell.endsWith('/bash') ? '.bashrc' : '.profile';
   const file = join(homedir(), rc);
-  if (existsSync(file) && readFileSync(file, 'utf8').includes(PATH_MARKER)) return { file, line, alreadyPresent: true };
+  let current = '';
+  try {
+    current = readFileSync(file, 'utf8');
+  } catch {
+    // No rc file yet: the append below creates it.
+  }
+  if (current.includes(PATH_MARKER)) return { file, line, alreadyPresent: true };
   appendFileSync(file, `\n${line}\n`);
   return { file, line, alreadyPresent: false };
 }

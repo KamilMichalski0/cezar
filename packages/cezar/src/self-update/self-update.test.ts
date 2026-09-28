@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { activate, activeId, detectInstallKind, installId, listInstalled, versionEntry, versionsDir, writeManifest } from './layout.ts';
-import { fetchPackageDocument } from './registry.ts';
+import { fetchPackageDocument, registryPath } from './registry.ts';
 import { restartArgs } from './restart.ts';
 import { classifyVersion, compareVersions, isNewer } from './semver.ts';
 
@@ -111,5 +111,28 @@ describe('registry document', () => {
 
     expect(await fetchPackageDocument('x', (async () => new Response('nope', { status: 500 })) as unknown as typeof fetch)).toBeNull();
     expect(await fetchPackageDocument('x', (async () => { throw new Error('offline'); }) as unknown as typeof fetch)).toBeNull();
+  });
+});
+
+describe('registryPath', () => {
+  it('keeps the scope marker and encodes everything after it', () => {
+    expect(registryPath('@open-mercato/cezar')).toBe('@open-mercato%2Fcezar');
+    expect(registryPath('cezar-cli')).toBe('cezar-cli');
+    expect(registryPath('@a/b@c')).toBe('@a%2Fb%40c');
+  });
+});
+
+describe('activeId without a symlink', () => {
+  it('reads the text-file fallback, and answers null when nothing is there', () => {
+    const home = mkdtempSync(join(tmpdir(), 'cez-active-'));
+    const env = { ...process.env, CEZ_HOME: home };
+    try {
+      expect(activeId(env)).toBeNull();
+      mkdirSync(versionsDir(env), { recursive: true });
+      writeFileSync(join(versionsDir(env), 'current'), '0.11.1\n');
+      expect(activeId(env)).toBe('0.11.1');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

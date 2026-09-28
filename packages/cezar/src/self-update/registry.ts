@@ -34,9 +34,15 @@ const documentSchema = z
   })
   .passthrough();
 
+/** The registry path of a package: a scope keeps its leading `@`, everything else is encoded
+ *  (`@scope/name` → `@scope%2Fname`). */
+export function registryPath(pkgName: string): string {
+  return pkgName.startsWith('@') ? `@${encodeURIComponent(pkgName.slice(1))}` : encodeURIComponent(pkgName);
+}
+
 export async function fetchPackageDocument(pkgName: string, fetchImpl: typeof fetch = fetch): Promise<PackageDocument | null> {
   try {
-    const res = await fetchImpl(`${REGISTRY}/${encodeURIComponent(pkgName).replace('%40', '@')}`, {
+    const res = await fetchImpl(`${REGISTRY}/${registryPath(pkgName)}`, {
       signal: AbortSignal.timeout(TIMEOUT_MS),
       headers: { accept: 'application/json' },
     });
