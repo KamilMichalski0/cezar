@@ -338,8 +338,17 @@ export async function autosaveCommit(
   // paths dirty for inspection, while allowing the agent's checkpoint to be
   // committed alongside them. The paths are passed as argv entries, never
   // interpolated into a shell command.
+  let exclusionResetFailed = false;
   for (const path of excludedPaths) {
-    await git(dir, ['reset', '--quiet', '--', path]);
+    const reset = await git(dir, ['reset', '--quiet', '--', path]);
+    if (!reset.ok) exclusionResetFailed = true;
+  }
+  if (exclusionResetFailed) {
+    // A failed path reset means we cannot prove which staged files belong to
+    // the command. Clear the index without touching the worktree, then defer
+    // the checkpoint rather than committing an unsafe mix of changes.
+    await git(dir, ['reset', '--quiet']);
+    return 'failed';
   }
   const staged = await git(dir, ['diff', '--cached', '--quiet']);
   if (staged.ok) return 'nothing-to-do';

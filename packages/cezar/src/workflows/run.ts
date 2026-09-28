@@ -947,6 +947,8 @@ export class RunManager {
   private readonly active = new Map<string, ActiveRun>();
   /** Check ownership survives a parked continuation without persisting transient state. */
   private readonly checkArtifactSnapshots = new Map<string, Map<string, string>>();
+  /** A failed checkpoint remains unsafe when a parked run is continued. */
+  private readonly autosaveCheckpointBlockedRuns = new Set<string>();
   // Queue + `starting` set (spec 006, janitor's pump() pattern): `starting`
   // covers the window between shifting a run off the queue and the run
   // registering in `active`, so parallel-slot counting is never racy.
@@ -3506,7 +3508,7 @@ export class RunManager {
       autoContinues: 0,
       autosaveExcludedPaths: this.checkArtifactSnapshots.get(runId) ?? new Map(),
       checkInProgress: false,
-      autosaveCheckpointBlocked: false,
+      autosaveCheckpointBlocked: this.autosaveCheckpointBlockedRuns.has(runId),
     };
     this.checkArtifactSnapshots.set(runId, state.autosaveExcludedPaths);
     this.active.set(runId, state);
@@ -3959,7 +3961,7 @@ export class RunManager {
       autoContinues: 0,
       autosaveExcludedPaths: this.checkArtifactSnapshots.get(runId) ?? new Map(),
       checkInProgress: false,
-      autosaveCheckpointBlocked: false,
+      autosaveCheckpointBlocked: this.autosaveCheckpointBlockedRuns.has(runId),
     };
     this.checkArtifactSnapshots.set(runId, state.autosaveExcludedPaths);
     this.active.set(runId, state);
@@ -4245,6 +4247,8 @@ export class RunManager {
             );
       const checkpointSafe = checkpoint === 'committed' || checkpoint === 'nothing-to-do';
       state.autosaveCheckpointBlocked = !checkpointSafe;
+      if (checkpointSafe) this.autosaveCheckpointBlockedRuns.delete(runId);
+      else this.autosaveCheckpointBlockedRuns.add(runId);
       let checkResult: { ok: boolean; output: string };
       state.checkInProgress = true;
       try {

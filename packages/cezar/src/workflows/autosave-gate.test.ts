@@ -130,4 +130,14 @@ describe('periodic autosave gate (#471)', () => {
     const { stdout: status } = await run('git', ['status', '--porcelain'], { cwd: worktreePath });
     expect(status.trim()).toBe('?? check-output.txt');
   });
+
+  it('refuses a checkpoint when an excluded path cannot be reset, without losing work', async () => {
+    rmSync(join(worktreePath, 'check-output.txt'), { force: true });
+    writeFileSync(join(worktreePath, 'unsafe-work.txt'), 'keep this dirty\n');
+
+    expect(await autosaveCommit(worktreePath, 'turn end', ['../outside-worktree.txt'])).toBe('failed');
+    expect(readFileSync(join(worktreePath, 'unsafe-work.txt'), 'utf8')).toBe('keep this dirty\n');
+    const { stdout: status } = await run('git', ['status', '--porcelain'], { cwd: worktreePath });
+    expect(status.trim()).toBe('?? unsafe-work.txt');
+  });
 });
