@@ -9,7 +9,7 @@ The desktop shell (`packages/desktop`, Tauri 2) is published as **signed install
 Releases**, one release per shell version under a `desktop-v<version>` tag, built by
 `.github/workflows/desktop-release.yml`. Everything downstream — the landing page's Download
 button, a Homebrew cask, winget, the shell's own auto-update — is a pointer to that release
-page. The shell ships **rarely and on its own version** (`0.1.0` today, decoupled from cezar's
+page. The shell ships **rarely and on its own version** (`0.1.1` today, decoupled from cezar's
 `0.11.x`): it contains no cezar code, because the cockpit and server come from
 `~/.cezar/versions` and update from inside the cockpit.
 
@@ -87,7 +87,7 @@ Maintainer, per shell release:
 
 1. Bump the shell version in all three manifests: `packages/desktop/package.json`,
    `packages/desktop/src-tauri/Cargo.toml`, `packages/desktop/src-tauri/tauri.conf.json`.
-   The shell is versioned on its own (`0.1.0` today), never in step with cezar.
+   The shell is versioned on its own (`0.1.1` today), never in step with cezar.
 2. `git tag desktop-v<version> && git push --tags`. `desktop-release.yml` builds, signs, uploads
    the installers under stable names and publishes `desktop-latest.json`. (Or dispatch the
    workflow by hand with the version.)
