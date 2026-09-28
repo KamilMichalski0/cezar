@@ -248,6 +248,23 @@ export async function removeWorktree(
 }
 
 /**
+ * Drop mutations made after the last committed checkpoint in a task worktree.
+ *
+ * Workflow command steps are verification, not agent work. They can still
+ * leave tracked files dirty (for example, a test appending debug output), so
+ * callers checkpoint first and then use this helper to restore the agent's
+ * committed state. The task worktree is isolated and all agent changes have
+ * already been autosaved when this is called; ignored files are intentionally
+ * left alone because autosave never stages them.
+ */
+export async function discardWorktreeChanges(dir: string): Promise<boolean> {
+  const reset = await git(dir, ['reset', '--hard', 'HEAD']);
+  if (!reset.ok) return false;
+  const clean = await git(dir, ['clean', '-fd']);
+  return clean.ok;
+}
+
+/**
  * Why an autosave commit happened. Only `periodic` is gated (behind
  * `CEZ_AUTOSAVE=1`, #471) — the three flushes always run so the branch ends
  * holding the finished state. Before this was recorded, all four wrote the bare

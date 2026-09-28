@@ -50,7 +50,14 @@ import { materializeSkillDir } from '../skills-remote.ts';
 import { seedAgentConfigLocalLayer } from '../agent-config/seed.ts';
 import { readAgentModelProvider } from '../agent-config/models.ts';
 import { loadConfig, resolveWorktreeRetention } from '../config.ts';
-import { autosaveCommit, createWorktree, resolveBaseRef, worktreeDiff, worktreeShortstat } from '../git-worktree.ts';
+import {
+  autosaveCommit,
+  createWorktree,
+  discardWorktreeChanges,
+  resolveBaseRef,
+  worktreeDiff,
+  worktreeShortstat,
+} from '../git-worktree.ts';
 import { getHeadCommit, getRepoInfo } from '../server/git.ts';
 import { loadWorkflows } from './load.ts';
 import type { QueuedMessage, RunRecord, RunStore, StepState } from '../runs/store.ts';
@@ -4203,7 +4210,25 @@ export class RunManager {
         continue;
       }
 
+      // Check commands are allowed to generate tracked output, but that output
+      // is verification residue rather than agent work. Save the agent's state
+      // before the command, then restore that checkpoint after it exits so the
+      // finalize autosave cannot fold check artifacts into the task branch.
+      const checkpoint =
+        state.cwd === this.repoRoot ? 'nothing-to-do' : await autosaveCommit(state.cwd, 'turn end');
+      const canDiscardCheckChanges = checkpoint === 'committed' || checkpoint === 'nothing-to-do';
       const { ok, output } = await this.runCheckStep(state, step, emit);
+      if (
+        canDiscardCheckChanges &&
+        state.cwd !== this.repoRoot &&
+        !state.cancelled &&
+        this.active.get(runId) === state
+      ) {
+        const discarded = await discardWorktreeChanges(state.cwd);
+        if (!discarded) {
+          emit({ type: 'note', stepId: step.id, message: 'could not discard check-step worktree changes' });
+        }
+      }
       if (state.cancelled) break;
       if (ok) {
         this.finishStep(runId, step.id, 'done', undefined, emit);
