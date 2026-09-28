@@ -19,8 +19,8 @@ Make an installed service fail when its configured port is occupied instead of s
 
 ### Phase 1: Implement and prove behavior
 
-- [ ] 1.1 Extract strict-versus-interactive port selection and add occupied-port regression coverage.
-- [ ] 1.2 Wire `CEZ_REMOTE=1` into startup while preserving interactive fallback.
+- [x] 1.1 Extract strict-versus-interactive port selection and add occupied-port regression coverage.
+- [x] 1.2 Wire `CEZ_REMOTE=1` into startup while preserving interactive fallback.
 
 ### Phase 2: Validate and publish
 
@@ -37,8 +37,8 @@ Strict mode intentionally leaves the real HTTP bind as the authority, so a race 
 
 ### Phase 1: Implement and prove behavior
 
-- [ ] 1.1 Extract strict-versus-interactive port selection and add occupied-port regression coverage.
-- [ ] 1.2 Wire `CEZ_REMOTE=1` into startup while preserving interactive fallback.
+- [x] 1.1 Extract strict-versus-interactive port selection and add occupied-port regression coverage. — 4b2a6b84
+- [x] 1.2 Wire `CEZ_REMOTE=1` into startup while preserving interactive fallback. — 4b2a6b84
 
 ### Phase 2: Validate and publish
 
