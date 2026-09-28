@@ -17,7 +17,7 @@ Non-goals: no server or wire-contract changes, no changes to auto-title generati
 
 - [x] 2.1 Enforce title-origin precedence in the shared `mergeRun` reducer. — 286a5157
 - [x] 2.2 Apply successful rename responses to list/detail/index caches and invalidate authoritative queries in both rename surfaces. — 286a5157
-- [ ] 2.3 Run focused tests, prove the regression tests fail against the pre-fix code, run the full validation gate, and complete review/QA evidence.
+- [x] 2.3 Run focused tests, prove the regression tests fail against the pre-fix code, run the full validation gate, and complete review/QA evidence. — 9e4902c0
 
 Risks: cache keys and list shapes must remain aligned across project-scoped queries; a response write-back must not prevent later authoritative refetches or a newer user rename from winning.
 
@@ -36,4 +36,4 @@ PR: #1125 (https://github.com/open-mercato/cezar/pull/1125)
 
 - [x] 2.1 Enforce title-origin precedence in the shared `mergeRun` reducer. — 286a5157, 7f589ead
 - [x] 2.2 Apply successful rename responses to list/detail/index caches and invalidate authoritative queries in both rename surfaces. — 286a5157
-- [ ] 2.3 Run focused tests, prove the regression tests fail against the pre-fix code, run the full validation gate, and complete review/QA evidence.
+- [x] 2.3 Run focused tests, prove the regression tests fail against the pre-fix code, run the full validation gate, and complete review/QA evidence. — 9e4902c0
