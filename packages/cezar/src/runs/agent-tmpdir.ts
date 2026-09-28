@@ -31,7 +31,7 @@
  */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, relative } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { cezarHomeDir } from '../paths.ts';
 
@@ -75,10 +75,22 @@ function platformTmpDir(): string {
   }
 }
 
+/** Find the checkout containing dataDir; linked worktrees have a .git file. */
+function containingCheckoutRoot(dataDir: string): string | undefined {
+  let current = resolve(dataDir);
+  while (true) {
+    if (existsSync(join(current, '.git'))) return current;
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
 /** Prefer CEZ_HOME, but never place agent scratch inside the checkout it protects. */
 function agentTmpBase(dataDir: string, env: NodeJS.ProcessEnv): string {
   const preferred = join(cezarHomeDir(env), 'tmp', 'agent');
-  if (!isInside(dataDir, preferred)) return preferred;
+  const checkout = containingCheckoutRoot(dataDir);
+  if (!isInside(checkout ?? dataDir, preferred)) return preferred;
   return join(platformTmpDir(), 'cez-agent');
 }
 

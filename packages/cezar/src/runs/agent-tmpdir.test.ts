@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -20,6 +20,15 @@ import {
   removeAgentTmpDir,
   sweepAgentTmpDirs,
 } from './agent-tmpdir.ts';
+import { execFile } from 'node:child_process';
+
+function gitInsideWorktree(path: string): Promise<string> {
+  return new Promise((resolve) => {
+    execFile('git', ['-C', path, 'rev-parse', '--is-inside-work-tree'], (error, stdout) => {
+      resolve(error ? '' : stdout.trim());
+    });
+  });
+}
 
 /**
  * #785: every agent shared the host's temp directory, and when that directory
@@ -77,6 +86,23 @@ describe('agentTmpEnv — per-run temp directory (#785)', () => {
   it('keeps runs out of each other’s scratch', () => {
     expect(agentTmpEnv(dataDir, 'run-a', {}).TMPDIR)
       .not.toBe(agentTmpEnv(dataDir, 'run-b', {}).TMPDIR);
+  });
+
+  it('keeps scratch outside a checkout when CEZ_HOME is a sibling repo directory', async () => {
+    const repo = mkdtempSync(join(realpathSync(tmpdir()), 'cez-agent-boundary-repo-'));
+    try {
+      await new Promise<void>((resolve, reject) => {
+        execFile('git', ['init', '-q', repo], (error) => (error ? reject(error) : resolve()));
+      });
+      const checkoutData = join(repo, '.ai', 'cezar');
+      const scratch = agentTmpDir(checkoutData, 'run-boundary', {
+        CEZ_HOME: join(repo, '.cezar'),
+      });
+      expect(relative(repo, scratch)).toMatch(/^\.\./);
+      expect(await gitInsideWorktree(scratch)).not.toBe('true');
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 
   it('fails with a named, actionable error when the directory cannot be created', () => {
