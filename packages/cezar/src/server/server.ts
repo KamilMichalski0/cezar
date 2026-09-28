@@ -94,6 +94,7 @@ import { discoverSkills } from '../skills.ts';
 import { SkillsUpdateConflictError, SkillsUpdateCoordinator, SkillsUpdateService, type SkillsUpdateState } from '../skills-update.ts';
 import { selfUpdateApplyRequestSchema, selfUpdateChannelRequestSchema } from '@open-mercato/cezar-contract';
 import { SelfUpdateBusyError, SelfUpdateService } from '../self-update/service.ts';
+import { isNewer } from '../self-update/semver.ts';
 import { getTeamSkillsCached, refreshTeamSkills, waitForTeamSkills } from '../skills-remote.ts';
 import { appendHandoffHeartbeat, handoffProgressExcerpt, readHandoff } from '../handoff.ts';
 import { markStarted, onTodosChanged, readTodos, removeTodo, todoTaskText, type TodoItem } from '../todos.ts';
@@ -2965,7 +2966,8 @@ export function createApp(deps: ServerDeps) {
   // and a channel; the server resolves both against the npm registry and its own managed
   // layout. Allowed in hosted mode on purpose: an update pulls a published package from the
   // registry, so the request cannot inject code, and a VPS behind the installer's Basic auth
-  // is exactly where "update from the cockpit" replaces `cezar server-deploy`.
+  // is exactly where "update from the cockpit" replaces `cezar server-deploy` — but hosted
+  // applies are FORWARD-ONLY (see the guard on /apply below).
   const selfUpdateRoutes = new Hono()
     .get('/workspace/self-update', async (c) => c.json(await selfUpdate.status()))
 
@@ -2979,6 +2981,19 @@ export function createApp(deps: ServerDeps) {
 
     .post('/workspace/self-update/apply', jsonZodValidator(selfUpdateApplyRequestSchema, { message: 'body must be { version }' }), async (c) => {
       const { version: target } = c.req.valid('json');
+      // SECURITY: a hosted cockpit may only move FORWARD. Installing a published package cannot
+      // inject code, but installing an OLDER one can: every hosted-mode guard — the `/api/*`
+      // request-origin check (#426), the `localHandoff` 409 that closes the agent-config hooks
+      // RCE path — lives in the running version, so a downgrade to a release that predates them
+      // re-opens exactly what they close, through a route those guards never get to see. A
+      // local cockpit keeps the full picker, downgrades included: there is no boundary left to
+      // escalate across when the caller already owns the machine.
+      if (!capabilities().localHandoff && !isNewer(target, deps.version)) {
+        return c.json(
+          { error: 'a hosted cockpit can only update forward — apply an older version on the host itself (`cezar use <id>`)' },
+          409,
+        );
+      }
       try {
         selfUpdate.apply(target);
       } catch (error) {

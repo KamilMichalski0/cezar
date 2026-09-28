@@ -34,8 +34,21 @@ export function binDir(env: NodeJS.ProcessEnv = process.env): string {
   return join(cezarHomeDir(env), 'bin');
 }
 
+/**
+ * A version id becomes a DIRECTORY NAME under `versions/`, and `installSpec` `rm -rf`s the path
+ * it resolves to — so an id that can climb out of `versions/` is a wipe of whatever it lands on.
+ * The wire schema (`selfUpdateApplyRequestSchema`) bounds the charset but still admits `..`, and
+ * npm rejecting `@open-mercato/cezar@..` today is a coincidence of npm's parser, not a guard we
+ * own. Require a leading alphanumeric and forbid `..` outright: every real version id
+ * (`0.12.0`, `0.12.0+local`, `0.12.0-nightly.20260927.60`) passes untouched.
+ */
+export function assertSafeId(id: string): string {
+  if (!/^[0-9A-Za-z][0-9A-Za-z.+-]*$/.test(id) || id.includes('..')) throw new Error(`invalid version id: ${id}`);
+  return id;
+}
+
 export function versionDir(id: string, env: NodeJS.ProcessEnv = process.env): string {
-  return join(versionsDir(env), id);
+  return join(versionsDir(env), assertSafeId(id));
 }
 
 /** The entry file inside one installed version's tree. */

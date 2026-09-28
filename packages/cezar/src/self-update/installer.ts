@@ -16,8 +16,19 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { z } from 'zod';
 
 import { installId, PACKAGE_NAME, versionDir, versionEntry, versionsDir, writeManifest } from './layout.ts';
+
+const packageJsonSchema = z.object({ name: z.string(), version: z.string().min(1) }).passthrough();
+
+function readJson(path: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+}
 
 export interface InstallOptions {
   onLog?: (line: string) => void;
@@ -45,9 +56,11 @@ export async function installFromRegistry(version: string, opts: InstallOptions 
 /** Pack the package at `packageRoot` (must be built) and install the tarball as `<version>+local`. */
 export async function installFromLocal(packageRoot: string, opts: InstallOptions = {}): Promise<InstallResult> {
   const env = opts.env ?? process.env;
-  const pkg = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as { name?: string; version?: string };
-  if (pkg.name !== PACKAGE_NAME || !pkg.version) throw new Error(`${packageRoot} is not a built ${PACKAGE_NAME} package`);
-  const version = pkg.version;
+  // The package.json is read back off disk, so it goes through a schema like every other
+  // persisted file cezar parses — a malformed one is "not a built package", never a crash.
+  const pkg = packageJsonSchema.safeParse(readJson(join(packageRoot, 'package.json')));
+  if (!pkg.success || pkg.data.name !== PACKAGE_NAME) throw new Error(`${packageRoot} is not a built ${PACKAGE_NAME} package`);
+  const version = pkg.data.version;
   const id = installId(version, 'local');
   const packDir = join(tmpdir(), `cezar-pack-${process.pid}-${Date.now()}`);
   mkdirSync(packDir, { recursive: true });
@@ -104,9 +117,9 @@ async function installSpec(
  */
 export function runNpm(args: string[], cwd: string, onLog?: (line: string) => void): Promise<void> {
   const npmExecpath = process.env.npm_execpath;
-  const viaNode = Boolean(npmExecpath);
+  const viaNode = npmExecpath !== undefined && npmExecpath !== '';
   const file = viaNode ? process.execPath : process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const full = viaNode ? [npmExecpath!, ...args] : args;
+  const full = npmExecpath ? [npmExecpath, ...args] : args;
   return new Promise((resolvePromise, reject) => {
     const child = spawn(file, full, {
       cwd,
