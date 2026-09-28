@@ -31,7 +31,7 @@ Owning cockpit must be reached at http://172.17.0.1:4321 in this container. Use 
 
 ### Phase 1: Independent PRs
 
-- [ ] 1.1 Dispatch first four issue fixes
+- [x] 1.1 Dispatch first four issue fixes — plan 58f2ac2a; children 707aaf48 (#1000), 2a670bde (#1079), 7c06da48 (#1077), 50de1f34 (#1059)
 - [ ] 1.2 Validate first reports and dispatch service-port fix
 
 ### Phase 2: Verification
