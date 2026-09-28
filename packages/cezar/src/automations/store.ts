@@ -192,9 +192,9 @@ export class AutomationStore {
 
   latestReceipts(): Map<string, AutomationReceipt> {
     const latest = new Map<string, AutomationReceipt>();
-    // The event identity is deliberately independent of the definition revision.  Older
-    // receipt writers included that revision in receiptKey, so derive the lookup key from the
-    // durable identity rather than trusting the persisted spelling (#1077).
+    // receiptKey is redundant with the durable identity.  Normalize from the identity rather
+    // than trusting the persisted spelling so imported or otherwise legacy rows cannot split
+    // deduplication across equivalent event identities.
     for (const row of this.receipts()) latest.set(receiptKeyFor(row.automationId, row.eventId), row);
     return latest;
   }

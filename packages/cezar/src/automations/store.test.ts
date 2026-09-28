@@ -85,7 +85,7 @@ describe('AutomationStore', () => {
     expect(store.latestReceipts().get('one:event')?.runId).toBe('run-1');
   });
 
-  it('does not reserve an event again when an older receipt key included its revision', async () => {
+  it('normalizes a legacy receipt key before checking event identity', async () => {
     const store = AutomationStore.open(await directory());
     store.appendReceipt({
       receiptId: 'old-receipt',
