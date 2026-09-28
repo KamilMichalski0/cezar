@@ -37,6 +37,7 @@ import { runProjectsCommand } from './workspace/projects-cli.ts';
 import { WorkspaceSemaphore } from './workspace/semaphore.ts';
 import { runTaskCommand } from './dispatch/task-cli.ts';
 import { runAutomationCommand } from './automations/automation-cli.ts';
+import { apiOrigin } from './api-origin.ts';
 import { pickStartupPort } from './startup-port.ts';
 
 import { runTrackerConnectionsCommand } from './server/tracker/connections-cli.ts';
@@ -257,10 +258,7 @@ async function serveCommand(
     console.log(`\n  ⬆ cezar ${latest} is available (running ${version}) — restart with: npx ${pkgName}@latest\n`);
   });
 
-  // Existing server-install units set CEZ_REMOTE=1. Their proxy has a fixed
-  // upstream, so an occupied port must make the real bind fail instead of
-  // silently moving the service away from the proxy.
-  const port = await pickStartupPort(preferredPort, process.env.CEZ_REMOTE === '1');
+  const port = await pickStartupPort(preferredPort, process.env.CEZ_REMOTE === '1', bindHost);
   // SECURITY: cezar executes agents. A non-loopback bind exposes that box to
   // whatever can reach the interface, and cezar itself has NO auth — it is only
   // for a deliberate hosted setup where a reverse proxy in front provides TLS +
@@ -274,7 +272,7 @@ async function serveCommand(
   }
   // Where a dispatched agent's `cez task` CLI reaches this cockpit (spec 2026-09-10-dispatch).
   // Set before the first run can start, read by every manager's `agentEnv` while dispatch is on.
-  process.env.CEZ_API_URL = `http://127.0.0.1:${port}`;
+  process.env.CEZ_API_URL = apiOrigin(bindHost, port);
   process.env.CEZ_BIN = resolve(process.argv[1] ?? fileURLToPath(import.meta.url));
   startServer({
     repoRoot,

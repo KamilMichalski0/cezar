@@ -1,5 +1,10 @@
 # Fix issue #1007: keep installed service on its assigned port
 
+Landing note: this branch intentionally depends on the reviewed API-origin
+startup changes from PR #1124. Land #1124 before #1128 (or land them together
+in that order); the integrated startup path preserves host-aware probing for
+interactive launches and strict configured-port behavior for CEZ_REMOTE=1.
+
 ## Goal
 
 Make an installed service fail when its configured port is occupied instead of silently moving away from the proxy upstream, while preserving interactive auto-increment.
