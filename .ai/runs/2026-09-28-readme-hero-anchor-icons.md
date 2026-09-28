@@ -56,13 +56,13 @@ real anchors, the nav row links to `#quick-start`, and their permalink icons are
 
 ### Phase 1: English README
 
-- [ ] 1.1 Replace the hero headings in README.md with centered paragraphs plus brand icon
+- [x] 1.1 Replace the hero headings in README.md with centered paragraphs plus brand icon — 01259781
 
 ### Phase 2: Localized READMEs
 
-- [ ] 2.1 Mirror the hero structure in README.zh-CN.md
-- [ ] 2.2 Mirror the hero structure in README.zh-TW.md
+- [x] 2.1 Mirror the hero structure in README.zh-CN.md — 86a8d5bb
+- [x] 2.2 Mirror the hero structure in README.zh-TW.md — 86a8d5bb
 
 ### Phase 3: Verification
 
-- [ ] 3.1 Verify the GitHub-rendered branch README has no permalink icon in the hero and the `#quick-start` nav link still resolves
+- [x] 3.1 Verify the GitHub-rendered branch README has no permalink icon in the hero and the `#quick-start` nav link still resolves — 86a8d5bb
