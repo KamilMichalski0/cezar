@@ -42,3 +42,11 @@ Owning cockpit must be reached at http://172.17.0.1:4321 in this container. Use 
 ## Audit update
 
 PRs #1124 (#1000), #1125 (#1059), #1126 (#1079) in flight. #1127 narrowed after parent challenged fabricated legacy-writer diagnosis; original writer always revision-independent. Recovery f3bf0b23 verified history. #999 replaces unconfirmed #1077 in the requested five fixes. Six tasks dispatched; seventh reserved for #999 after workflow autosave writer settles, eighth is the sole final reviewer. Parent independently reran automation tests 57/57 and title cache tests 99/99. #1126 destructive reset/clean design rejected; correction pending. #1125 hosted CI green.
+
+## Verification ledger
+
+- #1007 PR #1128 head 6b5bc7e0: parent regression rerun 2/2; child full gate passed 490 files/8292 tests. Final review must check required CEZ_REMOTE default-behavior documentation (.env.example + docs/reference.md missing in current diff) and startup overlap with #1124.
+- #1000 PR #1124 head f1d6c0cd: parent regression rerun 3/3, behavioral red proof corrected.
+- #1059 PR #1125 head 9e4902c0: hosted gate green, earlier parent rerun 99/99.
+- #1079 PR #1126 head d08a539b: destructive cleanup removed; parent flagged further attribution edge cases (failed checkpoint, later agent changes, periodic autosave, rename status parsing). Await correction.
+- #999 replacement fifth dispatched as e7343251, task7; source limited to temp/env wiring. Task8 remains reserved for exactly one final review.
