@@ -8,7 +8,7 @@ Snapshot: 114 open issues, 51 open PRs, 2026-09-28. Exclude covered fixes and ac
 1. #1007: installed-service port drift risks forwarding to the wrong process. Dispatch after #1000 to avoid startup-file overlap.
 2. #1000: wrong injected API origin breaks dispatch/reporting; reproduced in this task (localhost unreachable, host gateway owns this tree).
 3. #1079: finalize autosave includes check-generated tracked artifacts.
-4. #1077: editing automations can replay label events and launch duplicate work.
+4. #999: task temp directories inside the repository and inherited task variables contaminate test runs. Promoted after #1077 investigation disproved the proposed cause; #1077 remains unresolved and #1127 is defensive hardening only.
 5. #1059: live cache updates erase user-owned task titles.
 
 ## Non-goals
@@ -32,9 +32,13 @@ Owning cockpit must be reached at http://172.17.0.1:4321 in this container. Use 
 ### Phase 1: Independent PRs
 
 - [x] 1.1 Dispatch first four issue fixes — plan 58f2ac2a; children 707aaf48 (#1000), 2a670bde (#1079), 7c06da48 (#1077), 50de1f34 (#1059)
-- [ ] 1.2 Validate first reports and dispatch service-port fix
+- [x] 1.2 Validate first reports and dispatch service-port fix — c02743dd; #1000 source settled f5f7c201
 
 ### Phase 2: Verification
 
 - [ ] 2.1 Verify child diffs and test evidence
 - [ ] 2.2 Obtain final independent review verdict
+
+## Audit update
+
+PRs #1124 (#1000), #1125 (#1059), #1126 (#1079) in flight. #1127 narrowed after parent challenged fabricated legacy-writer diagnosis; original writer always revision-independent. Recovery f3bf0b23 verified history. #999 replaces unconfirmed #1077 in the requested five fixes. Six tasks dispatched; seventh reserved for #999 after workflow autosave writer settles, eighth is the sole final reviewer. Parent independently reran automation tests 57/57 and title cache tests 99/99. #1126 destructive reset/clean design rejected; correction pending. #1125 hosted CI green.
