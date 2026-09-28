@@ -102,10 +102,10 @@ PR: #1130
 
 ### Phase 4: Bigger hero, black icon (follow-up report)
 
-- [ ] 4.1 Probe what GitHub's sanitizer allows for sizing, and record the result
-- [ ] 4.2 Add `scripts/build-readme-hero.mjs` and generate the six hero SVGs
-- [ ] 4.3 Point the three READMEs at the black icon and the generated hero
-- [ ] 4.4 Verify the rendered branch README: hero still anchor-free, `<picture>` intact
+- [x] 4.1 Probe what GitHub's sanitizer allows for sizing, and record the result — b009c80b
+- [x] 4.2 Add `scripts/build-readme-hero.mjs` and generate the six hero SVGs — adf64e33
+- [x] 4.3 Point the three READMEs at the black icon and the generated hero — adf64e33
+- [x] 4.4 Verify the rendered branch README: hero still anchor-free, `<picture>` intact — adf64e33
 
 ### Phase 3: Verification
 
