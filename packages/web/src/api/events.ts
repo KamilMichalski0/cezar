@@ -169,7 +169,18 @@ export function applyRunDeleted(list: ApiRun[] | undefined, id: string): ApiRun[
  * out on every status change. Freshness for it comes from the `usage` ticks either way.
  */
 export function mergeRun(previous: ApiRun | undefined, run: RunRecord): ApiRun {
-  return previous?.usage ? { ...run, usage: previous.usage } : run
+  if (!previous) return run
+
+  // A reconnect can replay a run frame queued before the user renamed the task. The server's
+  // titleOrigin is the ownership bit: auto (and legacy missing) titles may not erase user/marker
+  // titles, while all other fields still come from the live frame.
+  const protectedTitle = previous.titleOrigin === 'user' || previous.titleOrigin === 'marker'
+  const incomingOwnsTitle = run.titleOrigin === 'user' || run.titleOrigin === 'marker'
+  const title = protectedTitle && !incomingOwnsTitle
+    ? { title: previous.title, titleSummary: previous.titleSummary, titleOrigin: previous.titleOrigin }
+    : {}
+
+  return previous.usage ? { ...run, ...title, usage: previous.usage } : { ...run, ...title }
 }
 
 // ---- live usage --------------------------------------------------------------------------
