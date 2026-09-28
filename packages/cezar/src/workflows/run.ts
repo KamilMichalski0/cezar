@@ -53,8 +53,8 @@ import { loadConfig, resolveWorktreeRetention } from '../config.ts';
 import {
   autosaveCommit,
   createWorktree,
-  discardWorktreeChanges,
   resolveBaseRef,
+  worktreeChangedPaths,
   worktreeDiff,
   worktreeShortstat,
 } from '../git-worktree.ts';
@@ -4110,6 +4110,7 @@ export class RunManager {
     this.prepareAutomationsSession(state);
     const retriesUsed = new Map<string, number>();
     let checkFailure: string | null = null;
+    const checkChangedPaths = new Set<string>();
     let runError: string | null = null;
     // `startRun` already persisted the task's attachments so a queued bubble can render them
     // (#612). Reuse those files for the agent-facing path note instead of minting
@@ -4212,22 +4213,15 @@ export class RunManager {
 
       // Check commands are allowed to generate tracked output, but that output
       // is verification residue rather than agent work. Save the agent's state
-      // before the command, then restore that checkpoint after it exits so the
-      // finalize autosave cannot fold check artifacts into the task branch.
+      // before the command, then keep the command's changed paths excluded from
+      // later autosaves while leaving those files dirty for inspection.
       const checkpoint =
-        state.cwd === this.repoRoot ? 'nothing-to-do' : await autosaveCommit(state.cwd, 'turn end');
-      const canDiscardCheckChanges = checkpoint === 'committed' || checkpoint === 'nothing-to-do';
+        state.cwd === this.repoRoot
+          ? 'nothing-to-do'
+          : await autosaveCommit(state.cwd, 'turn end', [...checkChangedPaths]);
       const { ok, output } = await this.runCheckStep(state, step, emit);
-      if (
-        canDiscardCheckChanges &&
-        state.cwd !== this.repoRoot &&
-        !state.cancelled &&
-        this.active.get(runId) === state
-      ) {
-        const discarded = await discardWorktreeChanges(state.cwd);
-        if (!discarded) {
-          emit({ type: 'note', stepId: step.id, message: 'could not discard check-step worktree changes' });
-        }
+      if (state.cwd !== this.repoRoot) {
+        for (const path of await worktreeChangedPaths(state.cwd)) checkChangedPaths.add(path);
       }
       if (state.cancelled) break;
       if (ok) {
@@ -4276,7 +4270,7 @@ export class RunManager {
     // Final autosave: the branch always ends holding the finished state.
     this.clearAutosaveTimer(state);
     if (!state.cancelled && this.active.get(runId) === state && state.cwd !== this.repoRoot) {
-      await autosaveCommit(state.cwd, 'run finalize');
+      await autosaveCommit(state.cwd, 'run finalize', [...checkChangedPaths]);
     }
 
     // The cancellation grace timer may have retired this owner while the async

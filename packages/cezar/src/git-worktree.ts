@@ -248,23 +248,6 @@ export async function removeWorktree(
 }
 
 /**
- * Drop mutations made after the last committed checkpoint in a task worktree.
- *
- * Workflow command steps are verification, not agent work. They can still
- * leave tracked files dirty (for example, a test appending debug output), so
- * callers checkpoint first and then use this helper to restore the agent's
- * committed state. The task worktree is isolated and all agent changes have
- * already been autosaved when this is called; ignored files are intentionally
- * left alone because autosave never stages them.
- */
-export async function discardWorktreeChanges(dir: string): Promise<boolean> {
-  const reset = await git(dir, ['reset', '--hard', 'HEAD']);
-  if (!reset.ok) return false;
-  const clean = await git(dir, ['clean', '-fd']);
-  return clean.ok;
-}
-
-/**
  * Why an autosave commit happened. Only `periodic` is gated (behind
  * `CEZ_AUTOSAVE=1`, #471) — the three flushes always run so the branch ends
  * holding the finished state. Before this was recorded, all four wrote the bare
@@ -334,7 +317,11 @@ function hasConflictMarkers(text: string): boolean {
  * markers: the incident behind #471 was an autosave capturing a half-resolved
  * merge, and a blind `git add -A` would do it again.
  */
-export async function autosaveCommit(dir: string, reason: AutosaveReason): Promise<AutosaveResult> {
+export async function autosaveCommit(
+  dir: string,
+  reason: AutosaveReason,
+  excludedPaths: readonly string[] = [],
+): Promise<AutosaveResult> {
   const status = await git(dir, ['status', '--porcelain']);
   if (!status.ok || !status.stdout.trim()) return 'nothing-to-do';
   const unresolved = await unresolvedConflicts(dir, status.stdout);
@@ -347,6 +334,15 @@ export async function autosaveCommit(dir: string, reason: AutosaveReason): Promi
     return 'refused';
   }
   await git(dir, ['add', '-A']);
+  // Command/check steps may leave useful artifacts in the worktree. Keep those
+  // paths dirty for inspection, while allowing the agent's checkpoint to be
+  // committed alongside them. The paths are passed as argv entries, never
+  // interpolated into a shell command.
+  for (const path of excludedPaths) {
+    await git(dir, ['reset', '--quiet', '--', path]);
+  }
+  const staged = await git(dir, ['diff', '--cached', '--quiet']);
+  if (staged.ok) return 'nothing-to-do';
   // Commit as the CURRENT git user, so the branch's commits (and any PR opened from it) are
   // attributed to the real author and pass CLA / attribution checks. The old hardcoded
   // `cezar <cezar@local>` identity made every autosave look like a non-GitHub user. Fall back to
@@ -363,6 +359,17 @@ export async function autosaveCommit(dir: string, reason: AutosaveReason): Promi
     `cezar autosave (${reason})`,
   ]);
   return commit.ok ? 'committed' : 'failed';
+}
+
+/** Return paths currently changed in the worktree, including untracked files. */
+export async function worktreeChangedPaths(dir: string): Promise<string[]> {
+  const status = await git(dir, ['status', '--porcelain=v1', '-z']);
+  if (!status.ok) return [];
+  return status.stdout
+    .split('\0')
+    .filter(Boolean)
+    .map((entry) => entry.slice(3))
+    .filter(Boolean);
 }
 
 /**
