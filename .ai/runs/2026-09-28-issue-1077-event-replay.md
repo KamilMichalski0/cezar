@@ -31,6 +31,8 @@ Risks: receipt-file compatibility and exactly-once behavior are persistence-sens
 
 ## Progress
 
+PR: #1127 (https://github.com/open-mercato/cezar/pull/1127)
+
 > Convention: `- [ ]` pending, `- [x]` done. Append ` — <commit sha>` when a step lands. Do not rename step titles.
 
 ### Phase 1: Reproduce and define the receipt invariant
@@ -45,5 +47,5 @@ Risks: receipt-file compatibility and exactly-once behavior are persistence-sens
 
 ### Phase 3: Validate and review
 
-- [ ] 3.1 Run the configured validation gate and inspect the final diff.
-- [ ] 3.2 Run the required autonomous PR review/autofix pass and publish evidence.
+- [x] 3.1 Run the configured validation gate and inspect the final diff. — local gate evidence posted; full npm test has unrelated parallel failures
+- [x] 3.2 Run the required autonomous PR review/autofix pass and publish evidence. — local review approved; GitHub self-approval is unavailable
