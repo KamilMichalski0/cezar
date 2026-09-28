@@ -28,9 +28,9 @@ Ensure dispatched agents inherit an API URL reachable on the interface where the
 
 ### Evidence
 
-- Red regression: reversing the implementation while retaining `api-origin.test.ts` failed with `Cannot find module './api-origin.ts'` (exit 1); the committed implementation then passed both tests.
-- Green regression: `npm exec vitest run packages/cezar/src/api-origin.test.ts` — 2 passed.
-- Configured gate after `npm ci`: `npm run typecheck`, `npm run test:unit`, `npm run build`, and `npm run test:package` pass. Aggregate local `npm test` still reports unrelated environment-sensitive failures, while the authoritative PR CI passes its complete server/cockpit suite, build, packaged E2E, release verification, CodeQL, and snapshot publication.
+- Red regression: with the extracted helper retained but `canListen` restored to the old hardcoded `127.0.0.1` probe, `api-origin.test.ts` failed behaviorally (`expected false, received true` for an occupied non-loopback port; exit 1). This proves the old interface bug rather than a missing-module failure.
+- Green regression: `npm exec vitest run packages/cezar/src/api-origin.test.ts` — 3 passed, including host-aware collision detection and startup wiring assertions.
+- Configured gate after `npm ci`: `npm run typecheck`, `npm run test:unit`, `npm run build`, and `npm run test:package` pass. Aggregate local `npm test` was re-run and still reports unrelated environment-sensitive failures; the authoritative PR CI previously passed its complete server/cockpit suite, build, packaged E2E, release verification, CodeQL, and snapshot publication. The new commit has triggered a fresh CI run.
 - The local skill collection provides `om-auto-review-pr` instructions but no executable command; the PR remains draft/in-progress for the reserved independent review.
 
 ## Risks
