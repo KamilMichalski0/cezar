@@ -26,6 +26,13 @@ Ensure dispatched agents inherit an API URL reachable on the interface where the
 - [ ] 2.1 Run red-before-fix and green regression tests, then the configured validation gate.
 - [ ] 2.2 Run the authoritative PR review/autofix pass and finalize the PR.
 
+### Evidence
+
+- Red regression: reversing the implementation while retaining `api-origin.test.ts` failed with `Cannot find module './api-origin.ts'` (exit 1); the committed implementation then passed both tests.
+- Green regression: `npm exec vitest run packages/cezar/src/api-origin.test.ts` — 2 passed.
+- Configured gate attempted in order. `npm run typecheck`, `npm test`, `npm run test:unit`, `npm run build`, and `npm run test:package` are blocked by pre-existing dependency/generated-artifact drift (Zod v3 resolving against v4-only contract APIs, missing `dotenv`/`proper-lockfile`, unrelated baseline failures, and absent build artifacts). No failure names this change.
+- The local skill collection provides `om-auto-review-pr` instructions but no executable command; the PR remains draft/in-progress for the reserved independent review.
+
 ## Risks
 
 The bind host may be an IPv6 literal or an unspecified wildcard address; URL formatting must bracket IPv6 literals, while the default must remain dialable loopback. The probe must use the exact configured bind host so a second cockpit cannot claim the same port on a different interface.
