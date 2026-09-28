@@ -14,10 +14,11 @@
  *
  * Two properties fix that, and this module owns both:
  *
- *   1. **Isolation** — each run gets `<dataDir>/tmp/<runId>`, on the same disk
- *      as the run's own state rather than a shared tmpfs, reaped when the run
- *      ends. `buildChildEnv` applies the per-run env last, so these values win
- *      over the host's without any allowlist change.
+ *   1. **Isolation** — each run gets a hashed project directory under
+ *      `<cezarHomeDir>/tmp/agent`, outside the repository and away from an
+ *      inherited checkout-local `TMPDIR`, reaped when the run ends.
+ *      `buildChildEnv` applies the per-run env last, so these values win over
+ *      the host's without any allowlist change.
  *   2. **Fail loud** — the directory is write-probed before the backend spawns.
  *      A run that cannot get a working temp directory fails immediately with a
  *      named, actionable error instead of spawning an agent that will run blind.
@@ -36,9 +37,9 @@ import { cezarHomeDir } from '../paths.ts';
 /** Run ids are uuids; anything else must never reach a recursive `rmSync`.
  *
  *  `.` and `..` are excluded explicitly, not as pedantry: they match the
- *  character class, and `join(dataDir, 'tmp', '..')` resolves to `<dataDir>`
- *  itself — a recursive removal of every run's state. A guard that admits the
- *  one input capable of turning this helper into data loss is not a guard. */
+ *  character class, and relative traversal would otherwise escape the run's
+ *  scratch namespace. A guard that admits an input capable of turning this
+ *  helper into data loss is not a guard. */
 function safeRunId(id: string): boolean {
   return /^[A-Za-z0-9._-]+$/.test(id) && id !== '.' && id !== '..';
 }
