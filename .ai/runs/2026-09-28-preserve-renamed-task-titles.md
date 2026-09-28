@@ -10,13 +10,13 @@ Non-goals: no server or wire-contract changes, no changes to auto-title generati
 
 ### Phase 1: Reproduce and protect cache ownership
 
-- [ ] 1.1 Add reducer regression tests proving stale auto/undefined title data cannot replace user/marker-owned titles while ordinary fields still merge.
-- [ ] 1.2 Add query/mutation regression coverage for successful rename write-back and runs-index invalidation.
+- [x] 1.1 Add reducer regression tests proving stale auto/undefined title data cannot replace user/marker-owned titles while ordinary fields still merge. — 286a5157
+- [x] 1.2 Add query/mutation regression coverage for successful rename write-back and runs-index invalidation. — 286a5157
 
 ### Phase 2: Implement and validate
 
-- [ ] 2.1 Enforce title-origin precedence in the shared `mergeRun` reducer.
-- [ ] 2.2 Apply successful rename responses to list/detail/index caches and invalidate authoritative queries in both rename surfaces.
+- [x] 2.1 Enforce title-origin precedence in the shared `mergeRun` reducer. — 286a5157
+- [x] 2.2 Apply successful rename responses to list/detail/index caches and invalidate authoritative queries in both rename surfaces. — 286a5157
 - [ ] 2.3 Run focused tests, prove the regression tests fail against the pre-fix code, run the full validation gate, and complete review/QA evidence.
 
 Risks: cache keys and list shapes must remain aligned across project-scoped queries; a response write-back must not prevent later authoritative refetches or a newer user rename from winning.
