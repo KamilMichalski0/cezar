@@ -30,7 +30,7 @@ Ensure dispatched agents inherit an API URL reachable on the interface where the
 
 - Red regression: reversing the implementation while retaining `api-origin.test.ts` failed with `Cannot find module './api-origin.ts'` (exit 1); the committed implementation then passed both tests.
 - Green regression: `npm exec vitest run packages/cezar/src/api-origin.test.ts` — 2 passed.
-- Configured gate attempted in order. `npm run typecheck`, `npm test`, `npm run test:unit`, `npm run build`, and `npm run test:package` are blocked by pre-existing dependency/generated-artifact drift (Zod v3 resolving against v4-only contract APIs, missing `dotenv`/`proper-lockfile`, unrelated baseline failures, and absent build artifacts). No failure names this change.
+- Configured gate after `npm ci`: `npm run typecheck`, `npm run test:unit`, `npm run build`, and `npm run test:package` pass. Aggregate local `npm test` still reports unrelated environment-sensitive failures, while the authoritative PR CI passes its complete server/cockpit suite, build, packaged E2E, release verification, CodeQL, and snapshot publication.
 - The local skill collection provides `om-auto-review-pr` instructions but no executable command; the PR remains draft/in-progress for the reserved independent review.
 
 ## Risks
