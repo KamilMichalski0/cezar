@@ -71,16 +71,14 @@ PR: #1130
 
 <!-- PROBE START — temporary, removed in the next commit -->
 
-<font size="6">PROBE-FONT-TAG</font>
+<table align="center"><tr><td align="center"><h2>PROBE-IN-TABLE</h2></td></tr></table>
 
-<span style="font-size: 32px">PROBE-SPAN-STYLE</span>
+<blockquote><h2 align="center">PROBE-IN-QUOTE</h2></blockquote>
 
-<big>PROBE-BIG-TAG</big>
+<details open><summary>s</summary><h2 align="center">PROBE-IN-DETAILS</h2></details>
 
-<h3 align="center"><img src="docs/brand/cezar-icon-black.svg" width="40" alt="" /></h3>
+<h2 align="center" id="custom-id-here">PROBE-EXPLICIT-ID</h2>
 
-<h3 align="center">PROBE-CENTERED-HEADING</h3>
-
-<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/cezar-icon-black.svg"><img src="docs/brand/cezar-icon-white.svg" width="40" alt="PROBE-PICTURE" /></picture></p>
+<h2 align="center"><a href="#quick-start">PROBE-LINK-ONLY</a></h2>
 
 <!-- PROBE END -->
