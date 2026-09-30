@@ -65,7 +65,7 @@ describe('workflow step timeoutMs (#880)', () => {
   it('rejects it on a check step, which has no wall clock to set', () => {
     const parsed = workflowStepSchema.safeParse({ id: 'v', command: 'npm test', timeoutMs: 60_000 });
     expect(parsed.success).toBe(false);
-    expect(parsed.error?.issues.map((i) => i.message).join('; ')).toContain('agent steps only');
+    expect(parsed.error?.issues.map((issue) => issue.message).join('; ')).toContain('agent steps only');
   });
 
   it('parses from a workflow file', () => {
@@ -159,7 +159,7 @@ describe('the resolved limit reaches AgentRunSpec.timeoutMs (#880)', () => {
     const record = manager!.startRun(CHAIN, { task: 'do the thing', worktree: false, runner: 'claude' });
     await settled(record.id);
 
-    expect(captured.specs.map((s) => s.timeoutMs)).toEqual([7_200_000, 5_400_000]);
+    expect(captured.specs.map((spec) => spec.timeoutMs)).toEqual([7_200_000, 5_400_000]);
   });
 
   it('with no config the runner default stays in charge (zero config)', async () => {
@@ -167,7 +167,7 @@ describe('the resolved limit reaches AgentRunSpec.timeoutMs (#880)', () => {
     await settled(record.id);
 
     // `undefined` is what lets each runner fall back to its own `DEFAULT_RUN_TIMEOUT_MS`.
-    expect(captured.specs.map((s) => s.timeoutMs)).toEqual([7_200_000, undefined]);
+    expect(captured.specs.map((spec) => spec.timeoutMs)).toEqual([7_200_000, undefined]);
   });
 
   it('the final interactive step keeps no wall clock whatever is configured', async () => {

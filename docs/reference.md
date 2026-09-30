@@ -270,10 +270,12 @@ several things in one go) does not have to be split — raise its limit instead:
 3. otherwise the built-in 30 minutes.
 
 Both take milliseconds, at most 24 hours (`86400000`); `0` removes the wall
-clock and leaves the step bounded only by the idle timer. `timeoutMs` is an
-agent-step field — a check step (`command`) rejects it. The workflow's final
-agent step is interactive and never had a wall clock: its session stays open
-for follow-ups and the idle timer closes it.
+clock and leaves the step bounded only by the idle timer — which does not run
+while the agent is actively working or monitoring, so `0` does not guarantee
+an inactivity bound in those states. `timeoutMs` is an agent-step field — a
+check step (`command`) rejects it. An agent that is the workflow's final step
+is interactive and never had a wall clock: its session stays open for
+follow-ups and the idle timer closes it.
 
 When the limit fires, the step fails with `… timed out after Nm and was
 killed`. Anything the agent committed before that stays on the task's
