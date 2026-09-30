@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { afterEach, describe, expect, it } from 'vitest';
 import { runRunsCommand, type RunsCliIo } from './runs-cli.ts';
 
 /** `cez runs` is a thin read-only client: what is pinned is the URL it builds, the filtering and
@@ -103,5 +105,104 @@ describe('cez runs', () => {
     expect(await runRunsCommand(['cancel', 'x'], env, unknown.io)).toBe(2);
     expect(unknown.err[0]).toContain('unknown command "cancel"');
     expect(unknown.calls).toHaveLength(0);
+  });
+
+  it('prints the agent-updated titleSummary instead of the prompt-derived title', async () => {
+    const h = harness({ status: 200, body: [run('aaaaaaaa-1', { titleSummary: 'shorter title' })] });
+    expect(await runRunsCommand(['list'], env, h.io)).toBe(0);
+    expect(h.out).toEqual(['aaaaaaaa  done  shorter title']);
+  });
+
+  it('--json keeps titleSummary on the untouched record', async () => {
+    const record = run('aaaaaaaa-1', { titleSummary: 'shorter title' });
+    const h = harness({ status: 200, body: [record] });
+    expect(await runRunsCommand(['list', '--json'], env, h.io)).toBe(0);
+    expect(JSON.parse(h.out[0]!)).toEqual([record]);
+  });
+
+  it('lists a run whose status this CLI does not recognize instead of dropping it', async () => {
+    const h = harness({ status: 200, body: [run('aaaaaaaa-1', { status: 'blocked-by-approval' })] });
+    expect(await runRunsCommand(['list'], env, h.io)).toBe(0);
+    expect(h.out).toEqual(['aaaaaaaa  blocked-by-approval  task aaaaaaaa-1']);
+  });
+
+  it('reports and skips genuinely malformed records (mixed validity), keeping the exit code 0', async () => {
+    const good = run('aaaaaaaa-1');
+    const malformed = { title: 'no id', status: 'done', createdAt: '2026-09-01T10:00:00.000Z', archived: false };
+    const h = harness({ status: 200, body: [good, malformed] });
+    expect(await runRunsCommand(['list'], env, h.io)).toBe(0);
+    expect(h.err).toEqual(['cez runs: ignored 1 record the cockpit sent in a shape this CLI does not recognize']);
+    expect(h.out).toEqual(['aaaaaaaa  done  task aaaaaaaa-1']);
+  });
+
+  it('reports and fails when every record is malformed instead of claiming there are no tasks', async () => {
+    const malformed = [{ title: 'no id' }, { title: 'also no id' }];
+    const h = harness({ status: 200, body: malformed });
+    expect(await runRunsCommand(['list'], env, h.io)).toBe(1);
+    expect(h.err).toEqual(['cez runs: ignored 2 records the cockpit sent in a shape this CLI does not recognize']);
+    expect(h.out).toHaveLength(0);
+
+    const jsonH = harness({ status: 200, body: malformed });
+    expect(await runRunsCommand(['list', '--json'], env, jsonH.io)).toBe(1);
+    expect(JSON.parse(jsonH.out[0]!)).toEqual([]);
+  });
+});
+
+/** The request has a bounded deadline that covers reading the body, not only the connect/headers
+ *  phase — a cockpit that stalls after answering with a 200 must not hang `cez runs list` forever
+ *  (#1133 review). A real loopback server, not a hand-rolled fetch mock: the point under test is
+ *  the interaction between `AbortSignal.timeout` and the platform `fetch`, which a mock would have
+ *  to reimplement to be worth anything. */
+describe('cez runs — request timeout', () => {
+  const servers: Server[] = [];
+
+  afterEach(async () => {
+    await Promise.all(
+      servers.splice(0).map(
+        (s) =>
+          new Promise<void>((resolve) => {
+            s.closeAllConnections();
+            s.close(() => resolve());
+          }),
+      ),
+    );
+  });
+
+  async function serve(handler: Parameters<typeof createServer>[1]): Promise<string> {
+    const server = createServer(handler);
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  }
+
+  const io = (out: string[], err: string[]): RunsCliIo => ({
+    fetch,
+    log: (line) => out.push(line),
+    error: (line) => err.push(line),
+    timeoutMs: 50,
+  });
+
+  it('times out and exits 1 when the cockpit never sends headers', async () => {
+    const base = await serve(() => {
+      // never writes a response — the connection just sits open
+    });
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await runRunsCommand(['list'], { CEZ_API_URL: base }, io(out, err));
+    expect(code).toBe(1);
+    expect(err).toEqual(['cez runs: the cockpit did not answer within 50ms']);
+  });
+
+  it('times out and exits 1 when the cockpit answers but never finishes the body', async () => {
+    const base = await serve((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.write('[');
+      // never calls res.end() — the body stream stalls after the headers land
+    });
+    const out: string[] = [];
+    const err: string[] = [];
+    const code = await runRunsCommand(['list'], { CEZ_API_URL: base }, io(out, err));
+    expect(code).toBe(1);
+    expect(err).toEqual(['cez runs: the cockpit did not answer within 50ms']);
   });
 });
