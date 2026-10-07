@@ -172,6 +172,7 @@ const WORKSPACE_CONFIG: WorkspaceConfigResponse = {
   resources: {
     maxParallel: 2,
     maxMonitoringSessions: 2,
+    idleTimeoutMinutes: 15,
     monitoringWakeIntervalMinutes: null,
     autoResumeOnUsageLimit: true,
     memoryLimitMb: null,
@@ -338,6 +339,18 @@ function renderNewTask(entry = '/new') {
 }
 
 const textarea = () => screen.getByLabelText('Describe a task for the agent') as HTMLTextAreaElement
+
+const pngFile = (name = 'shot.png', bytes: number[] = [1, 2, 3]) =>
+  new File([new Uint8Array(bytes)], name, { type: 'image/png' })
+
+const paste = (target: HTMLTextAreaElement, files: File[]) =>
+  fireEvent.paste(target, {
+    clipboardData: {
+      items: files.map((file) => ({ kind: 'file', type: file.type, getAsFile: () => file })),
+    },
+  })
+
+const attachmentChips = () => screen.queryAllByLabelText(/^Remove /)
 const sourcePill = () => screen.getByRole('button', { name: 'Choose a skill or workflow' })
 const location = () => screen.getByTestId('location').textContent
 
@@ -1517,7 +1530,7 @@ describe('bookmarklet auto-start', () => {
     ])
   })
 
-  it('waits for project config and sends a connected fallback when that default is unavailable', async () => {
+  it('waits for project config and keeps the form when that default is unavailable', async () => {
     const delayedConfig = deferredJson<ConfigResponse>()
     const delayedProviders = deferredJson<ProviderStatusResponse>()
     serve({ config: delayedConfig.fetch, providerStatus: delayedProviders.fetch })
@@ -1538,14 +1551,9 @@ describe('bookmarklet auto-start', () => {
     expect(runsPosted()).toHaveLength(0)
 
     delayedConfig.release({ ...CONFIG, defaultRunner: 'codex' })
-    await waitFor(() => expect(screen.queryByTestId('elsewhere')).not.toBeNull())
-    expect(runsPosted().map((request) => request.body)).toEqual([
-      {
-        task: 'hello',
-        steps: [{ id: 'task', name: 'deploy', skill: 'deploy', prompt: '{{task}}' }],
-        runner: 'claude',
-      },
-    ])
+    await waitFor(() => expect(textarea().value).toBe('hello'))
+    expect(runsPosted()).toHaveLength(0)
+    expect(screen.queryByTestId('elsewhere')).toBeNull()
   })
 
   it('valid key + auto=1 + skill/ref → starts unattended with the exact legacy body, then the thread', async () => {
@@ -1564,7 +1572,7 @@ describe('bookmarklet auto-start', () => {
     expect(requests.some((r) => r.method === 'PUT' && r.url === '/api/v1/ui-state')).toBe(false)
   })
 
-  it('uses an explicit connected fallback when the saved server default is disconnected', async () => {
+  it('keeps the prefilled composer when the saved server default is disconnected', async () => {
     serve({
       providerStatus: {
         providers: [
@@ -1576,15 +1584,29 @@ describe('bookmarklet auto-start', () => {
       },
     })
     renderNewTask('/new?skill=deploy&ref=hello&auto=1&key=k-real')
-    await waitFor(() => expect(screen.queryByTestId('elsewhere')).not.toBeNull())
+    await waitFor(() => expect(textarea().value).toBe('hello'))
 
-    expect(runsPosted().map((request) => request.body)).toEqual([
-      {
-        task: 'hello',
-        steps: [{ id: 'task', name: 'deploy', skill: 'deploy', prompt: '{{task}}' }],
-        runner: 'codex',
+    expect(runsPosted()).toHaveLength(0)
+    expect(screen.queryByTestId('elsewhere')).toBeNull()
+  })
+
+  it('keeps the prefilled composer when the saved server default is disabled', async () => {
+    serve({
+      config: { defaultRunner: 'claude' },
+      providerStatus: {
+        providers: [
+          { provider: 'claude', status: 'connected', enabled: false },
+          { provider: 'codex', status: 'connected', enabled: true },
+          { provider: 'opencode', status: 'not-installed', enabled: true },
+          { provider: 'cursor', status: 'not-installed', enabled: true },
+        ],
       },
-    ])
+    })
+    renderNewTask('/new?skill=deploy&ref=hello&auto=1&key=k-real')
+    await waitFor(() => expect(textarea().value).toBe('hello'))
+
+    expect(runsPosted()).toHaveLength(0)
+    expect(screen.queryByTestId('elsewhere')).toBeNull()
   })
 
   it('keeps the prefilled composer disabled and does not POST when none are connected', async () => {
@@ -1773,6 +1795,73 @@ describe('the Start | Plan first toggle', () => {
 })
 
 describe('the plan flow', () => {
+  it('restores the attachment chip when a plan is discarded', async () => {
+    serve()
+    renderNewTask()
+    await pillReady()
+    fireEvent.click(planToggle())
+    fireEvent.change(textarea(), { target: { value: 'look at this' } })
+    paste(textarea(), [pngFile()])
+    await waitFor(() => expect(attachmentChips()).toHaveLength(1))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Plan task' }))
+    await screen.findByText('Proposed chain')
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }))
+
+    await waitFor(() => expect(screen.queryByText('Proposed chain')).toBeNull())
+    expect(textarea().value).toBe('look at this')
+    expect(attachmentChips()).toHaveLength(1)
+  })
+
+  it('posts a planned attachment once and clears it after Start', async () => {
+    serve({ createRun: { id: 'planned-with-attachment' } })
+    renderNewTask()
+    await pillReady()
+    fireEvent.click(planToggle())
+    fireEvent.change(textarea(), { target: { value: 'run this with context' } })
+    paste(textarea(), [pngFile()])
+    await waitFor(() => expect(attachmentChips()).toHaveLength(1))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Plan task' }))
+    await screen.findByText('Proposed chain')
+    fireEvent.click(document.querySelector('[data-slot="plan-start"]') as HTMLElement)
+
+    await waitFor(() => expect(location()).toBe('/tasks/planned-with-attachment'))
+    const runRequests = requests.filter((request) => request.url === '/api/v1/runs' && request.method === 'POST')
+    expect(runRequests).toHaveLength(1)
+    expect((runRequests[0]?.body as { images?: unknown[] }).images).toHaveLength(1)
+
+    // The route unmounts after Start, so revisit the composer to prove the module-level
+    // per-project attachment store was cleared rather than merely hidden by navigation.
+    cleanup()
+    renderNewTask('/new')
+    await pillReady()
+    expect(attachmentChips()).toHaveLength(0)
+  })
+
+  it('restores the attachment when a plan request is rejected', async () => {
+    serve({
+      plan: () =>
+        Promise.resolve(
+          new Response(JSON.stringify({ error: 'planner unavailable' }), {
+            status: 500,
+            headers: { 'content-type': 'application/json' },
+          }),
+        ),
+    })
+    renderNewTask()
+    await pillReady()
+    fireEvent.click(planToggle())
+    fireEvent.change(textarea(), { target: { value: 'retry this plan' } })
+    paste(textarea(), [pngFile()])
+    await waitFor(() => expect(attachmentChips()).toHaveLength(1))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Plan task' }))
+    await waitFor(() => expect(screen.queryByText('Proposed chain')).toBeNull())
+    expect(textarea().value).toBe('retry this plan')
+    expect(attachmentChips()).toHaveLength(1)
+  })
+
   it('submit in plan mode POSTs /api/v1/plan (never /api/v1/runs) and opens the review overlay', async () => {
     serve()
     renderNewTask()
@@ -2448,7 +2537,7 @@ describe('the Dispatch toggle', () => {
     expect((postedBody() as Record<string, unknown>).dispatch).toEqual({ maxSubtasks: 10, inFlight: 2 })
   })
 
-  it('the settings offer the host runners and the model presets of the chosen subtask runner', async () => {
+  it('the settings offer the host runners and the model catalog of the chosen subtask runner', async () => {
     const toggle = await readyWithDispatch({ health: { ...HEALTH_DISPATCH, checks: HEALTH_MULTI.checks }, providerStatus: PROVIDERS_MULTI })
     fireEvent.click(settingsTrigger()!)
     await waitFor(() => expect(settings()).not.toBeNull())
@@ -2460,20 +2549,46 @@ describe('the Dispatch toggle', () => {
     await waitFor(() => expect(Array.from(model().options).map((o) => o.value)).toEqual(['', 'opus', 'sonnet']))
 
     // Picking a model, then another runner: the model pin is dropped with it (presets are
-    // per-runner), and codex's list here is its static presets — auto only, which the select
-    // folds into "same as parent" — because only the parent's runner gets the live catalog.
+    // per-runner), and the list becomes CODEX's — its own discovered catalog, not the parent's
+    // and not the `auto`-only static presets discovery replaced (#784/#794).
     fireEvent.change(model(), { target: { value: 'sonnet' } })
     expect(readDraft().dispatch).toEqual({ model: 'sonnet' })
     fireEvent.change(runner, { target: { value: 'codex' } })
     expect(readDraft().dispatch).toEqual({ runner: 'codex' })
-    expect(Array.from(model().options).map((o) => o.value)).toEqual([''])
+    await waitFor(() => expect(Array.from(model().options).map((o) => o.value)).toEqual(['', 'gpt-future']))
+    fireEvent.change(model(), { target: { value: 'gpt-future' } })
+    expect(readDraft().dispatch).toEqual({ runner: 'codex', model: 'gpt-future' })
     fireEvent.change(screen.getByLabelText('Budget per subtask'), { target: { value: '2.5' } })
-    expect(readDraft().dispatch).toEqual({ runner: 'codex', budgetUsd: 2.5 })
+    expect(readDraft().dispatch).toEqual({ runner: 'codex', model: 'gpt-future', budgetUsd: 2.5 })
+
+    // Back to the parent's runner: the pin is dropped again and the parent's catalog returns.
+    fireEvent.change(runner, { target: { value: '' } })
+    expect(readDraft().dispatch).toEqual({ budgetUsd: 2.5 })
+    await waitFor(() => expect(Array.from(model().options).map((o) => o.value)).toEqual(['', 'opus', 'sonnet']))
 
     // The header switch is the same on/off as the pill.
     fireEvent.click(document.querySelector('[data-slot="dispatch-settings-switch"]')!)
     expect(toggle.getAttribute('aria-checked')).toBe('false')
     expect(readDraft().dispatch).toBeNull()
+  })
+
+  it("a Codex subtask under a Claude parent can pin a Codex model, and it rides the body", async () => {
+    await readyWithDispatch({ health: { ...HEALTH_DISPATCH, checks: HEALTH_MULTI.checks }, providerStatus: PROVIDERS_MULTI })
+    fireEvent.click(settingsTrigger()!)
+    await waitFor(() => expect(settings()).not.toBeNull())
+
+    // The composer itself stays on claude — only the SUBTASKS run as codex.
+    fireEvent.change(screen.getByLabelText('Subtask runner'), { target: { value: 'codex' } })
+    const model = () => screen.getByLabelText('Subtask model') as HTMLSelectElement
+    await waitFor(() => expect(Array.from(model().options).map((o) => o.value)).toEqual(['', 'gpt-future']))
+    fireEvent.change(model(), { target: { value: 'gpt-future' } })
+
+    fireEvent.change(textarea(), { target: { value: 'Fan this out to codex' } })
+    await startTask()
+    const body = postedBody() as Record<string, unknown>
+    expect(body.dispatch).toEqual({ runner: 'codex', model: 'gpt-future' })
+    // The parent's own engine is untouched by the subtask pick.
+    expect(body).not.toHaveProperty('model')
   })
 
   it('the keyboard reaches the settings with ArrowDown', async () => {
