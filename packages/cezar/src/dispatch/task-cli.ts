@@ -10,6 +10,7 @@
  */
 import { parseArgs } from 'node:util';
 import { missingCockpitMessage } from '../cockpit-address.ts';
+import { RUNNER_IDS } from '../core/agent-runner.ts';
 
 export interface TaskCliEnv {
   CEZ_API_URL?: string;
@@ -27,7 +28,7 @@ const USAGE = `cez task — dispatch cezar tasks from inside a task (on by defau
 
   cez task create "<objective>" [--title "…"] [--kind implement|review] [--review-of <branch|run>]
                   [--scope "…"] [--budget <usd>] [--success "…"] [--evidence "…"] [--tools A,B]
-                  [--runner claude|codex|opencode] [--model <model>] [--retry-limit <0-3>]
+                  [--runner ${RUNNER_IDS.join('|')}] [--model <model>] [--retry-limit <0-3>]
   cez task report --status done|partial|failed|blocked --result "…" [--evidence "…"]…
                   [--verdict approve|changes|reject] [--suggestions "…"]… [--confidence <0-1>]
                   [--side-effect "…"]… [--error "…"]… [--next "…"]
