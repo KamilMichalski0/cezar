@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, AgentRunResult, AgentRunSpec } from '../core/agent-runner.ts';
 import { RunStore } from '../runs/store.ts';
+import { graphNodeSchema } from './graph.ts';
 import { RunManager } from './run.ts';
 import {
   agentStepTimeoutMs,
@@ -82,6 +83,17 @@ describe('workflow step timeoutMs (#880)', () => {
   it('keeps a step with its own limit out of the compact skills: form', () => {
     expect(skillStackOf([{ id: 's', name: 's', skill: 's', prompt: '{{task}}' }])).toEqual(['s']);
     expect(skillStackOf([{ id: 's', name: 's', skill: 's', prompt: '{{task}}', timeoutMs: 0 }])).toBeNull();
+  });
+});
+
+describe('graph agent node timeoutMs (#880)', () => {
+  it('a version: 2 agent node carries the same limit as a v1 step', () => {
+    const node = graphNodeSchema.parse({ id: 'a', type: 'agent', prompt: '{{task}}', timeoutMs: 600_000 });
+    expect(node.type === 'agent' && node.timeoutMs).toBe(600_000);
+  });
+
+  it('caps it at 24 h like the step field', () => {
+    expect(() => graphNodeSchema.parse({ id: 'a', type: 'agent', prompt: 'x', timeoutMs: 86_400_001 })).toThrow();
   });
 });
 
