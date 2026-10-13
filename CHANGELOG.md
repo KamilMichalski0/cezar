@@ -1,3 +1,9 @@
+# Unreleased
+
+## ✨ Features
+- ✨ Branch naming instructions in Settings → Instructions: task branches are named from the first prompt under your instructions, with a short wait before the fork and a skeleton in the branch cell meanwhile; empty keeps `cez/<id>`. *(@martaradziszewska)*
+- ✨ Project settings regrouped: Agents keeps providers, runner and models; the new Instructions section holds the system prompt, branch naming and prompt templates; the new Tasks section holds base branch, the review gate and live titles. Old prompt-templates links redirect. *(@martaradziszewska)*
+
 # 0.15.0 (2026-10-11)
 
 ## Highlights

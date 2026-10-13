@@ -164,6 +164,11 @@ async function respond(userText, imageCount) {
   // `mock:ask-truncated` → a complete payload one closing brace short (#936):
   // the closer repair should still produce one card, note the recovery, and
   // strip the raw marker (which ends on `]`, not `}`).
+  // `mock:ask-refs` → the same valid marker, but with task-reference marker lines AFTER it
+  // (#997, the ASK twin of `mock:monitoring-refs`): the handoff contract asks for those "as
+  // soon as you know" and names only DONE/MONITORING as coming last, so an agent that declares
+  // its issue in the turn it asks emits exactly this shape. It used to bury the marker — no
+  // card, and in a dispatched task an inbox message could answer the Guard instead of the human.
   // `mock:ask-many` → six distinct questions, one of them with six options:
   // over the old 4/4 caps, which refused the whole payload and showed the user
   // raw JSON. It must now render as exactly one card, and a dispatched child
@@ -214,7 +219,8 @@ async function respond(userText, imageCount) {
               ],
             },
           ],
-        })
+        }) +
+        (userText.includes('mock:ask-refs') ? '\nCEZ:ISSUE=997\nCEZ:TITLE=asking before declaring' : '')
       : '';
   // `mock:verdict=<name>` → the reply ends with `CEZ:VERDICT <name>`, a graph agent node's
   // branch choice (spec 2026-09-30-workflow-node-editor). cezar's one-shot verdict nudge carries
@@ -428,9 +434,13 @@ async function respond(userText, imageCount) {
   // dry-run tests can assert the full apply pipeline.
   if (userText.includes('[cez-namer]')) {
     const numbered = /(?:^|\D)(\d{1,7})(?:\D|$)/.exec(userText);
+    // Branch naming instructions (spec 2026-10-11-branch-naming-instructions): a canned branch
+    // so dry-run tests can assert the fork used it. Only when the prompt carried instructions.
+    const named = userText.includes('Branch naming instructions:');
     const name = JSON.stringify({
       title: 'implementing cr fixes',
       ...(numbered ? { pr: Number(numbered[1]) } : {}),
+      ...(named ? { branch: 'feature/implementing cr fixes' } : {}),
     });
     emit({
       type: 'assistant',
