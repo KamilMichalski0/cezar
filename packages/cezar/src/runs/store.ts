@@ -19,6 +19,9 @@ import { StreamRedaction } from './stream-redaction.ts';
 import { collectSecretValues, redactDeep, redactSecrets } from '../core/secret-redaction.ts';
 // Sibling module, files only — a draft belongs to a run and is deleted with it (#939).
 import { deleteRunDrafts } from './drafts.ts';
+import { deleteRunLayouts, pruneOrphanLayouts } from './layouts.ts';
+import { failureKind, taskFailedLabel } from './failure-kind.ts';
+import { track } from '../telemetry.ts';
 // Pure, dependency-free reference helpers — the same sanity bound the marker parser applies.
 import { MAX_REF } from './task-refs.ts';
 // Type-only module (zod + nothing else), so this cannot cycle back into the store.
@@ -462,13 +465,16 @@ export interface RunEvent {
   [key: string]: unknown;
 }
 
+/** A layout file this young may belong to a run another process has not saved to the index yet. */
+const ORPHAN_LAYOUT_GRACE_MS = 10 * 60_000;
 const MAX_RUNS_KEPT = 300;
 /** Every save rewrites the whole index, and a live run touches its record at event rate. */
 const SAVE_DEBOUNCE_MS = 1_000;
 const MAX_ARCHIVED_KEPT = 500;
 
-const PR_URL_RE = /https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+/;
-const ISSUE_URL_RE = /https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/\d+/;
+// Any host: GitHub Enterprise lives on arbitrary domains (`isGithubHost` can't be asked from a regex).
+const PR_URL_RE = /https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+\/pull\/\d+/;
+const ISSUE_URL_RE = /https:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+\/issues\/\d+/;
 // The transcript auto-link is convenience only (the cockpit's own `gh pr create` path sets the
 // URL authoritatively). Adopt a PR URL ONLY when the agent actually CREATED one — a task that
 // reviews or merely references an existing PR must not get mislabeled with its number (#fake-pr).
@@ -515,6 +521,9 @@ function refUrlRepo(url: string): string | undefined {
  * Note what this does not touch: `referenced*Candidates` keep recording every URL as evidence.
  * The fix changes what is *promoted*, never what is *collected* (the #526 rule).
  */
+// Compares `owner/repo` only: `RepoHandle` carries no host, so the same slug on another GitHub
+// host (Enterprise vs github.com) reads as in-repo. Rare enough to accept; add a host to the
+// handle if it ever bites.
 function isRepoScopedRef(url: string, task: string, handle?: RepoHandle | null): boolean {
   if (!handle) return true;
   const repo = refUrlRepo(url);
@@ -942,6 +951,8 @@ export class RunStore extends EventEmitter {
           for (const run of parsed.data) {
             store.runs.set(run.id, reconcileLoadedRun(run, opts));
           }
+          // Only behind an index that actually loaded — an unreadable one would orphan every layout.
+          pruneOrphanLayouts(dataDir, new Set(store.runs.keys()), ORPHAN_LAYOUT_GRACE_MS);
         } else {
           store.indexReadHealth = { state: 'unavailable', omittedRuns: Array.isArray(raw) ? raw.length : 0, reason: 'Task index could not be loaded by this server' };
         }
@@ -1120,6 +1131,11 @@ export class RunStore extends EventEmitter {
     // projection often provide the replacement URL/number in the same patch; seeding afterward
     // would make the historical association unrecoverable.
     if (!run.prRefs && !normalized.prRefs) run.prRefs = legacyPrRefs(run);
+    // Counted on the transition only (#1438); an auto-resumed attempt failing again repeats a failure already counted.
+    if (normalized.status === 'failed' && run.status !== 'failed' && run.autoResumeAttempts === undefined) {
+      const kind = failureKind(normalized.error ?? run.error);
+      if (kind) track('task_failed', { label: taskFailedLabel(run.runner, kind) });
+    }
     Object.assign(run, this.redactPatch(normalized, id));
     // Keep legacy writers (including workflow resume/naming paths) in sync without requiring
     // every caller to know about the additive list. The list's provenance still decides the
@@ -1799,6 +1815,7 @@ export class RunStore extends EventEmitter {
         rmSync(this.handoffPath(stale.id), { force: true });
         rmSync(this.imagesDir(stale.id), { recursive: true, force: true });
         deleteRunDrafts(this.dataDir, stale.id);
+        deleteRunLayouts(this.dataDir, stale.id); // spec 2026-10-07-task-workspace §5.3
       } catch {
         // best effort
       }
