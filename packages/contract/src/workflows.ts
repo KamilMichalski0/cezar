@@ -3,6 +3,13 @@ import { runnerSchema } from './health.ts';
 import { stepSecretsSchema } from './secrets.ts';
 
 /**
+ * Upper bound for an agent step's `timeoutMs` (24 h). Mirrors `AGENT_TIMEOUT_MAX_MS`
+ * in packages/cezar/src/core/agent-runner.ts - the contract stays Node-free, so it
+ * cannot import it. Change both together.
+ */
+const AGENT_STEP_TIMEOUT_MAX_MS = 24 * 60 * 60_000;
+
+/**
  * The WORKFLOWS family: the chain catalog, the save/parse routes, and the planner.
  *
  * This file must NOT import `./runs.ts`: the run record embeds a workflow definition
@@ -33,7 +40,7 @@ export const workflowStepDefSchema = z
     allowedTools: z.array(z.string()).optional(),
     bashAllowlist: z.array(z.string()).optional(),
     /** Per-step agent wall-clock limit in ms, 0 = none, at most 24 h (#880). */
-    timeoutMs: z.number().int().min(0).max(24 * 60 * 60_000).optional(),
+    timeoutMs: z.number().int().min(0).max(AGENT_STEP_TIMEOUT_MAX_MS).optional(),
     // check step
     command: z.string().optional(),
     onFail: z
@@ -108,7 +115,7 @@ export const workflowGraphNodeSchema = z.discriminatedUnion('type', [
     runner: runnerSchema.optional(),
     allowedTools: z.array(z.string()).optional(),
     bashAllowlist: z.array(z.string()).optional(),
-    timeoutMs: z.number().int().min(0).max(24 * 60 * 60_000).optional(),
+    timeoutMs: z.number().int().min(0).max(AGENT_STEP_TIMEOUT_MAX_MS).optional(),
     verdicts: z.array(verdictName).min(1).optional(),
     session: z.object({ continue: nodeId }).optional(),
     review: z.boolean().optional(),
