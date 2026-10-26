@@ -16,6 +16,7 @@
  *                 `junie --acp=true`), JSON-RPC 2.0 (JSONL) over stdin/stdout.
  */
 
+import type { UsageWindowsObservation } from '@open-mercato/cezar-contract';
 import type { UiEvent } from './ui-events.ts';
 import type { PrivateMcpServer } from './private-mcp.ts';
 
@@ -46,6 +47,8 @@ export function isRunnerId(value: string): value is RunnerId {
 export const AGENT_TIMEOUT_MAX_MS = 24 * 60 * 60_000;
 
 export interface AgentRunSpec {
+  /** Optional account usage metadata from ordinary activity. Bind to the resolved step account. */
+  onUsageWindows?: (observation: UsageWindowsObservation) => void;
   /** Appended to the CLI's default system prompt (`--append-system-prompt`). */
   systemPrompt?: string;
   userPrompt: string;

@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes, useNavigate } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ProjectScopeProvider } from '@/api/project-scope-context'
+import { lifecycleQueryKeys } from '@/api/worktree-lifecycle'
 import { queryKeys } from '@/api/queries'
 import { Toaster, resetToasts } from '@/components/ui/toaster'
 import { createQueryClient } from '@/api/query-client'
@@ -1515,6 +1516,26 @@ describe('ThreadView', () => {
     expect(document.querySelector('[data-slot="thread-empty"]')).toBeNull()
   })
 
+  it('the queued placeholder\'s Start now posts start-now; a usage-limit hold hides it', async () => {
+    const urlOf = (input: RequestInfo | URL) => (input instanceof Request ? input.url : String(input))
+    const fetchMock = vi.fn((input: RequestInfo | URL) =>
+      Promise.resolve(
+        new Response(urlOf(input).endsWith('/start-now') ? '{"started":true}' : '[]', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      ),
+    )
+    const { unmount } = renderView(<ThreadView run={run('queued')} thread={reduceThread([])} />)
+    vi.stubGlobal('fetch', fetchMock) // after renderView, which stubs its own
+    fireEvent.click(document.querySelector('[data-slot="start-now"]') as HTMLElement)
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => urlOf(url).endsWith('/start-now'))).toBe(true))
+    unmount()
+
+    renderView(<ThreadView run={run('queued', { queueWaitReason: { kind: 'account-resume' } })} thread={reduceThread([])} />)
+    expect(document.querySelector('[data-slot="start-now"]')).toBeNull()
+  })
+
   it('the first real event replaces the queued placeholder', () => {
     renderView(<ThreadView run={run('queued')} thread={reduceThread([line(1, 'lifecycle', { message: 'cezar restarted — task re-queued' })])} />)
     expect(document.querySelector('[data-slot="queued-state"]')).toBeNull()
@@ -1925,4 +1946,19 @@ describe('liveTurnStart — where the Working… counter starts', () => {
     expect(liveTurnStart(run, { turns: [] })).toBe(run.startedAt)
     expect(liveTurnStart(run, { turns: [turn({})] })).toBe(run.startedAt)
   })
+})
+
+
+it('shows lifecycle recovery before agent activity and prevents misleading reply controls', async () => {
+  const operationId = '11111111-1111-4111-8111-111111111111'
+  const queryClient = createQueryClient()
+  queryClient.setQueryData(lifecycleQueryKeys.operation(operationId), {operation:{id:operationId,worktreeId:operationId,generation:1,phase:'setup',intent:'create',state:'needs_attention',revision:1,createdAt:'now',updatedAt:'now',history:[],entries:[],allowedActions:['retry','start-anyway','cancel-task']}})
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response('[]', {status:200,headers:{'content-type':'application/json'}}))))
+  const fixture = run('waiting', {worktreeLifecycle:{worktreeId:operationId,generation:1,activeOperationId:operationId,phase:'setup',state:'needs_attention',needsAttention:true}})
+  render(<QueryClientProvider client={queryClient}><MemoryRouter><ThreadView run={fixture} thread={reduceThread([])} /></MemoryRouter></QueryClientProvider>)
+  expect(await screen.findByText('Setup needs attention')).toBeTruthy()
+  expect(document.querySelector('[data-slot="paused-hint"]')).toBeNull()
+  expect(document.querySelector('[data-slot="working-indicator"]')).toBeNull()
+  expect(screen.getByText('Resolve the worktree operation above before continuing this task.')).toBeTruthy()
+  expect(screen.queryByRole('textbox')).toBeNull()
 })
