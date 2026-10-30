@@ -54,7 +54,7 @@ const configSchema = z.object({
   memoryLimitMb: z.number().int().min(0).max(1_048_576).optional().catch(undefined),
   /**
    * Wall-clock limit in ms for a non-interactive agent step (#880), on every backend. Unset =
-   * the runner's built-in 30 minutes; `0` = no wall clock. A workflow step's own `timeoutMs`
+   * the runner's built-in 30 minutes; `0` = no time limit. A workflow step's own `timeoutMs`
    * wins over it (`agentStepTimeoutMs`). `.catch(undefined)` keeps the key additive-safe: a
    * bad value degrades to the built-in default without discarding the rest of the config.
    */

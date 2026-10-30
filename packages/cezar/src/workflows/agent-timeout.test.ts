@@ -54,7 +54,7 @@ describe('workflow step timeoutMs (#880)', () => {
     expect(parsed.timeoutMs).toBeUndefined();
   });
 
-  it('accepts 0 (no wall clock) and the 24 h cap on an agent step', () => {
+  it('accepts 0 (no time limit) and the 24 h cap on an agent step', () => {
     expect(workflowStepSchema.parse({ id: 'a', skill: 's', timeoutMs: 0 }).timeoutMs).toBe(0);
     expect(workflowStepSchema.parse({ id: 'a', skill: 's', timeoutMs: 86_400_000 }).timeoutMs).toBe(86_400_000);
   });
@@ -63,7 +63,7 @@ describe('workflow step timeoutMs (#880)', () => {
     expect(workflowStepSchema.safeParse({ id: 'a', prompt: 'x', timeoutMs }).success).toBe(false);
   });
 
-  it('rejects it on a check step, which has no wall clock to set', () => {
+  it('rejects it on a check step, which has no time limit to set', () => {
     const parsed = workflowStepSchema.safeParse({ id: 'v', command: 'npm test', timeoutMs: 60_000 });
     expect(parsed.success).toBe(false);
     expect(parsed.error?.issues.map((issue) => issue.message).join('; ')).toContain('agent steps only');
@@ -104,11 +104,11 @@ describe('agentStepTimeoutMs precedence (#880)', () => {
     expect(agentStepTimeoutMs({}, undefined, false)).toBeUndefined();
   });
 
-  it('a step 0 disables the wall clock even under a repo limit', () => {
+  it('a step 0 disables the time limit even under a repo limit', () => {
     expect(agentStepTimeoutMs({ timeoutMs: 0 }, 5_400_000, false)).toBe(0);
   });
 
-  it('the interactive step never gets a wall clock', () => {
+  it('the interactive step never gets a time limit', () => {
     expect(agentStepTimeoutMs({ timeoutMs: 7_200_000 }, 5_400_000, true)).toBe(0);
   });
 });
@@ -182,7 +182,7 @@ describe('the resolved limit reaches AgentRunSpec.timeoutMs (#880)', () => {
     expect(captured.specs.map((spec) => spec.timeoutMs)).toEqual([7_200_000, undefined]);
   });
 
-  it('the final interactive step keeps no wall clock whatever is configured', async () => {
+  it('the final interactive step keeps no time limit whatever is configured', async () => {
     writeConfig({ agentTimeoutMs: 5_400_000 });
     const single: WorkflowDef = {
       name: 'single',

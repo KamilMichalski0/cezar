@@ -40,9 +40,10 @@ export function isRunnerId(value: string): value is RunnerId {
 }
 
 /**
- * Upper bound for a configured agent wall-clock timeout (#880): 24 hours. Node's `setTimeout`
+ * Upper bound for a configured agent time limit (#880): 24 hours. Node's `setTimeout`
  * fires AT ONCE for any delay above 2^31-1 ms (~24.8 days), so an unbounded value would turn
- * "a very long limit" into "killed on spawn". `0` stays the way to say "no wall clock at all".
+ * "a very long limit" into "killed on spawn"; the hard ceiling behind it (8x, `HARD_CEILING_FACTOR`)
+ * stays under that too, at 8 days. `0` stays the way to say "no time limit at all".
  * `AGENT_STEP_TIMEOUT_MAX_MS` in packages/contract/src/workflows.ts repeats this value.
  */
 export const AGENT_TIMEOUT_MAX_MS = 24 * 60 * 60_000;
@@ -74,7 +75,7 @@ export interface AgentRunSpec {
    *  each backend's own channel — never written into `cwd` (spec 2026-10-07-private-project-mcp). */
   mcpServers?: PrivateMcpServer[];
   model?: string;
-  /** Wall-clock kill switch for the run (ms). */
+  /** Inactivity kill switch for the run (ms): no output for this long stops it; 0 disables. */
   timeoutMs?: number;
   /**
    * Stable session id (UUID) so the user can take over interactively later:

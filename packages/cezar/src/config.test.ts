@@ -131,7 +131,7 @@ describe('loadConfig systemPrompt', () => {
       expect((await loadConfig(repoRoot)).agentTimeoutMs).toBe(5_400_000);
     });
 
-    it('keeps 0 as a meaningful value (no wall clock)', async () => {
+    it('keeps 0 as a meaningful value (no time limit)', async () => {
       write({ agentTimeoutMs: 0 });
       expect((await loadConfig(repoRoot)).agentTimeoutMs).toBe(0);
     });

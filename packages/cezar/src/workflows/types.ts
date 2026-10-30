@@ -43,9 +43,9 @@ export const workflowStepSchema = z
     runner: z.enum(RUNNER_IDS).optional(),
     allowedTools: z.array(z.string()).optional(),
     bashAllowlist: z.array(z.string()).optional(),
-    /** Per-step agent wall-clock limit in ms (#880); `0` disables it. Wins over the repo's
+    /** Per-step agent time limit in ms (#880); `0` disables it. Wins over the repo's
      *  `agentTimeoutMs`, which wins over the runner's built-in 30 minutes. The final
-     *  interactive step has no wall clock at all (the idle timer rules), so it ignores this. */
+     *  interactive step has no time limit at all (the idle timer rules), so it ignores this. */
     timeoutMs: z.number().int().min(0).max(AGENT_TIMEOUT_MAX_MS).optional(),
     // check step
     command: z.string().optional(),
@@ -72,7 +72,7 @@ export const workflowStepSchema = z
     message: 'a step is either an agent step (prompt/skill) or a check step (command), not both',
   })
   .refine((s) => !(s.command && s.timeoutMs !== undefined), {
-    message: 'timeoutMs applies to agent steps only (a check step has no wall-clock limit)',
+    message: 'timeoutMs applies to agent steps only (a check step has no time limit)',
   })
   .refine((s) => !s.secrets || Boolean(s.command), {
     message: 'secrets: is for check steps only — an agent step never receives a secret',
@@ -243,11 +243,11 @@ export function stepsIssue(steps: WorkflowStepDef[]): string | null {
 }
 
 /**
- * The wall-clock limit an agent step hands its runner (`AgentRunSpec.timeoutMs`, #880).
+ * The time limit an agent step hands its runner (`AgentRunSpec.timeoutMs`, #880).
  * Precedence: the step's own `timeoutMs`, then the repo's `agentTimeoutMs`, then `undefined`,
  * which leaves the runner's built-in default (`DEFAULT_RUN_TIMEOUT_MS`, 30 minutes) in charge.
  * The final interactive step always answers `0`: its session stays open for follow-ups and the
- * idle timer, not a wall clock, is what ends it.
+ * idle timer, not a time limit, is what ends it.
  */
 export function agentStepTimeoutMs(
   step: Pick<WorkflowStepDef, 'timeoutMs'>,
